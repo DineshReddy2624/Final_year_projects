@@ -22,7 +22,7 @@ import itineraryService from '../services/itineraryService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import AttractionImage from '../components/AttractionImage';
-import { formatCurrency, formatDurationMins, formatDistanceKm, getCategoryBadgeColor } from '../utils/formatters';
+import { formatCurrency, formatDurationMins, formatDistanceKm, getCategoryBadgeColor, capitalizeWords } from '../utils/formatters';
 
 export default function RecommendationsPage() {
   const navigate = useNavigate();
@@ -88,6 +88,8 @@ export default function RecommendationsPage() {
     try {
       const itin = await itineraryService.generateItinerary({
         destination: tripPlan.destination,
+        source: tripPlan.source || 'Hyderabad Airport (RGIA)',
+        roundTrip: tripPlan.roundTrip !== undefined ? tripPlan.roundTrip : true,
         startDate: tripPlan.startDate,
         endDate: tripPlan.endDate,
         travelersCount: tripPlan.travelersCount,
@@ -96,6 +98,9 @@ export default function RecommendationsPage() {
         transportation: tripPlan.transportation,
         pace: tripPlan.pace,
         selectedAttractions: selectedAttractions,
+        fuelType: tripPlan.fuelType || 'petrol',
+        mileageKmpl: tripPlan.mileageKmpl || 14.0,
+        fuelPricePerLitre: tripPlan.fuelPricePerLitre || 105.0,
       });
 
       setCurrentItinerary(itin);
@@ -261,7 +266,7 @@ export default function RecommendationsPage() {
                         poi.category
                       )}`}
                     >
-                      {poi.category}
+                      {capitalizeWords(poi.category)}
                     </span>
 
                     <button
@@ -298,7 +303,7 @@ export default function RecommendationsPage() {
                 {/* Body Content */}
                 <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
                   <div className="space-y-2.5">
-                    <h3 className="text-base font-bold text-[#163B46] leading-snug">{poi.name}</h3>
+                    <h3 className="text-base font-bold text-[#163B46] leading-snug">{capitalizeWords(poi.name)}</h3>
 
                     {poi.address && (
                       <p className="text-xs text-[#52636A] line-clamp-1 flex items-center">

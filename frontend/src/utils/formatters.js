@@ -69,3 +69,18 @@ export const getCategoryBadgeColor = (category = '') => {
   }
   return 'bg-sky-50 text-sky-800 border-sky-200';
 };
+
+export const formatFeasibilityStatus = (status = '') => {
+  if (!status) return 'Feasible';
+  const clean = status.toLowerCase().replace(/_/g, ' ');
+  return clean
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+export const capitalizeWords = (str = '') => {
+  if (!str) return '';
+  return str.replace(/\b[a-z]/g, (char) => char.toUpperCase());
+};
+

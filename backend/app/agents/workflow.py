@@ -271,12 +271,40 @@ async def generate_explanation_node(state: AgentState) -> Dict[str, Any]:
         tot_cost = b_summary.get("estimated_total_cost", 0.0)
         tot_days = itin.get("total_days", 1)
         tot_dist = itin.get("total_distance_km", 0.0)
+        ja = itin.get("journey_assessment")
+        sh = itin.get("stopover_accommodation")
+        dh = itin.get("destination_accommodation")
 
         response_lines.append(f"### 🗺️ Planned {tot_days}-Day Itinerary for {dest}\n")
         response_lines.append(
-            f"Here is your optimized itinerary covering **{tot_dist} km** with an estimated budget of **₹{tot_cost:,.2f}** "
+            f"Here is your optimized itinerary covering **{tot_dist:.1f} km** with an estimated budget of **₹{tot_cost:,.2f}** "
             f"({itin.get('feasibility_status', 'feasible')}).\n"
         )
+
+        if ja:
+            response_lines.append(
+                f"**🛣️ Highway Assessment**: {ja.get('journey_classification', 'Comfortable')} • "
+                f"{ja.get('total_road_distance_km', 0):.1f} km road trip ({ja.get('total_driving_duration_hours', 0):.1f} hrs driving)."
+            )
+            if ja.get("recommended_stopover_towns"):
+                response_lines.append(f"- *Recommended Midway Hubs*: {', '.join(ja.get('recommended_stopover_towns'))}")
+            if ja.get("driver_fatigue_warning"):
+                response_lines.append(f"- ⚠️ *Driver Fatigue Advisory*: {ja.get('driver_fatigue_warning')}")
+            response_lines.append("")
+
+        if sh or dh:
+            response_lines.append("**🏨 Accommodation Arrangements:**")
+            if sh:
+                response_lines.append(
+                    f"- **Midway Stopover**: {sh.get('name')} in {sh.get('stopover_town')} "
+                    f"(@ ₹{sh.get('estimated_nightly_price', 0):.0f}/night) — {sh.get('room_type', 'Standard')}"
+                )
+            if dh:
+                response_lines.append(
+                    f"- **Destination Stay**: {dh.get('name')} in {dh.get('city')} "
+                    f"({dh.get('nights', 1)} nights @ ₹{dh.get('estimated_nightly_price', 0):.0f}/night)"
+                )
+            response_lines.append("")
 
         for day in itin.get("days", []):
             d_num = day.get("day_number")

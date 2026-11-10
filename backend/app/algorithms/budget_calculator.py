@@ -2,16 +2,20 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
+    from app.schemas.hotel import AccommodationSummary, HotelItem
     from app.schemas.itinerary import (
         BudgetCalculationResult,
         ExpenseCategoryBreakdown,
         PriceCategoryBreakdown,
+        VehicleTravelMetrics,
     )
 except ImportError:
+    from backend.app.schemas.hotel import AccommodationSummary, HotelItem
     from backend.app.schemas.itinerary import (
         BudgetCalculationResult,
         ExpenseCategoryBreakdown,
         PriceCategoryBreakdown,
+        VehicleTravelMetrics,
     )
 
 # Mode transport cost parameters (per km in INR)
@@ -50,13 +54,22 @@ def calculate_itinerary_budget(
     include_accommodation: bool = False,
     accommodation_type: str = "standard",
     dietary_budget_tier: str = "moderate",
+    fuel_type: str = "petrol",
+    mileage_kmpl: float = 14.0,
+    fuel_price_per_litre: float = 105.0,
+    source_name: Optional[str] = None,
+    is_round_trip: bool = True,
+    stopover_hotel: Optional[HotelItem] = None,
+    destination_hotel: Optional[HotelItem] = None,
+    accommodation_summary: Optional[AccommodationSummary] = None,
+    rooms_needed: Optional[int] = None,
 ) -> BudgetCalculationResult:
     """Calculate comprehensive multi-category itinerary budget with explicit provenance separation.
 
     Separates prices into:
     - Verified: Confirmed by official place data.
     - User-provided: Explicitly set by the traveler.
-    - Estimated: Standard rates (transport per km, meals, accommodation).
+    - Estimated: Standard rates (transport per km or car petrol telemetry, meals, accommodation).
     - Unknown: Missing entrance fees estimated conservatively (never assumed to be zero).
     """
     travelers_count = max(1, travelers_count)
@@ -105,26 +118,93 @@ def calculate_itinerary_budget(
                 f"Entrance fee for '{stop_name}' is unverified; applied conservative placeholder of ₹{fee_per_person:.0f}/person."
             )
 
-    # 2. Transportation Expenses Calculation
-    rate_per_km = TRANSPORT_RATES.get(transportation, TRANSPORT_RATES["driving-car"])
-    transport_total = round(total_distance_km * rate_per_km, 2)
-    estimated_cost += transport_total
+    # 2. Transportation & Vehicle Telemetry Expenses Calculation
+    vehicle_metrics: Optional[VehicleTravelMetrics] = None
+
+    if transportation == "driving-car":
+        kmpl = max(5.0, float(mileage_kmpl or 14.0))
+        fuel_rate = max(10.0, float(fuel_price_per_litre or 105.0))
+        req_litres = round(max(0.2, total_distance_km / kmpl), 2)
+        fuel_cost = round(req_litres * fuel_rate, 2)
+
+        attraction_stops_count = sum(
+            1 for s in stops_data if not s.get("is_start_location") and not s.get("is_end_location")
+        )
+        parking_and_tolls = round((total_days * 150.0) + (attraction_stops_count * 50.0), 2)
+        transport_total = round(fuel_cost + parking_and_tolls, 2)
+        estimated_cost += transport_total
+
+        vehicle_metrics = VehicleTravelMetrics(
+            transportation=transportation,
+            fuel_type=fuel_type,
+            total_distance_km=round(total_distance_km, 2),
+            mileage_kmpl=kmpl,
+            fuel_price_per_litre=fuel_rate,
+            estimated_fuel_litres=req_litres,
+            estimated_fuel_cost=fuel_cost,
+            parking_and_tolls_estimate=parking_and_tolls,
+            total_transit_cost=transport_total,
+            is_round_trip=is_round_trip,
+            source_name=source_name,
+            notes=[
+                f"Total route distance: {total_distance_km:.2f} km.",
+                f"Fuel efficiency: {kmpl:.1f} km/L ({fuel_type.capitalize()}).",
+                f"Fuel needed: ~{req_litres:.2f} Litres @ ₹{fuel_rate:.2f}/L = ₹{fuel_cost:.2f}.",
+                f"Parking & Toll buffer: ₹{parking_and_tolls:.2f} across {total_days} day(s).",
+            ],
+        )
+        notes.append(
+            f"Car Telemetry: {total_distance_km:.1f} km road trip requires ~{req_litres:.1f}L {fuel_type} "
+            f"(₹{fuel_cost:.2f} @ ₹{fuel_rate:.0f}/L) plus ₹{parking_and_tolls:.2f} parking/tolls."
+        )
+    else:
+        rate_per_km = TRANSPORT_RATES.get(transportation, TRANSPORT_RATES["driving-car"])
+        transport_total = round(total_distance_km * rate_per_km, 2)
+        estimated_cost += transport_total
 
     # 3. Food & Dining Expenses Calculation
     daily_meal_rate = MEAL_TIER_RATES.get(dietary_budget_tier, MEAL_TIER_RATES["moderate"])
     food_total = round(daily_meal_rate * travelers_count * total_days, 2)
     estimated_cost += food_total
 
-    # 4. Accommodation Expenses Calculation (when requested)
+    # 4. Accommodation Expenses Calculation (Stopovers + Destination Hotels)
     accommodation_total = 0.0
-    if include_accommodation and total_days > 1:
+    stopover_cost = 0.0
+    destination_cost = 0.0
+
+    if stopover_hotel or destination_hotel:
+        if stopover_hotel:
+            stopover_cost = round(float(stopover_hotel.total_stay_cost), 2)
+            if stopover_hotel.price_status == "verified":
+                verified_cost += stopover_cost
+            else:
+                estimated_cost += stopover_cost
+            notes.append(
+                f"Stopover Hotel ({stopover_hotel.stopover_town or 'En route'}): '{stopover_hotel.name}' "
+                f"({stopover_hotel.nights} night @ ₹{stopover_hotel.estimated_nightly_price:.0f}/night × {stopover_hotel.rooms_needed} room(s)) = ₹{stopover_cost:.2f}."
+            )
+
+        if destination_hotel:
+            destination_cost = round(float(destination_hotel.total_stay_cost), 2)
+            if destination_hotel.price_status == "verified":
+                verified_cost += destination_cost
+            else:
+                estimated_cost += destination_cost
+            notes.append(
+                f"Destination Hotel ({destination_hotel.city}): '{destination_hotel.name}' "
+                f"({destination_hotel.nights} night(s) @ ₹{destination_hotel.estimated_nightly_price:.0f}/night × {destination_hotel.rooms_needed} room(s)) = ₹{destination_cost:.2f}."
+            )
+
+        accommodation_total = round(stopover_cost + destination_cost, 2)
+    elif include_accommodation and total_days > 1:
         nights = total_days - 1
-        rooms_needed = math.ceil(travelers_count / 2.0)
-        nightly_room_rate = ACCOMMODATION_RATES.get(accommodation_type, ACCOMMODATION_RATES["standard"])
-        accommodation_total = round(nights * rooms_needed * nightly_room_rate, 2)
+        num_rooms = rooms_needed or math.ceil(travelers_count / 2.0)
+        nightly_room_rate = ACCOMMODATION_RATES.get(accommodation_type, ACCOMMODATION_RATES.get("standard", 3500.0))
+        accommodation_total = round(nights * num_rooms * nightly_room_rate, 2)
+        destination_cost = accommodation_total
         estimated_cost += accommodation_total
         notes.append(
-            f"Included {accommodation_type} accommodation: {nights} night(s) × {rooms_needed} room(s) @ ₹{nightly_room_rate}/night."
+            f"Included {accommodation_type} accommodation: {nights} night(s) × {num_rooms} room(s) @ ₹{nightly_room_rate:.0f}/night."
         )
 
     # 5. Contingency Buffer Calculation
@@ -157,6 +237,8 @@ def calculate_itinerary_budget(
         entrance_fees=round(total_entrance_fees, 2),
         food=round(food_total, 2),
         accommodation=round(accommodation_total, 2),
+        stopover_accommodation=round(stopover_cost, 2),
+        destination_accommodation=round(destination_cost, 2),
         contingency_buffer=round(contingency_buffer, 2),
     )
 
@@ -171,6 +253,11 @@ def calculate_itinerary_budget(
         has_unknown_expenses=unknown_prices_count > 0,
         by_provenance=by_provenance,
         by_category=by_category,
+        stopover_accommodation_cost=round(stopover_cost, 2),
+        destination_accommodation_cost=round(destination_cost, 2),
+        total_accommodation_cost=round(accommodation_total, 2),
+        accommodation_summary=accommodation_summary,
+        vehicle_metrics=vehicle_metrics,
         budget_notes=notes,
     )
 

@@ -54,6 +54,7 @@ export default function Navbar({ healthState }) {
   };
 
   const isActive = (path) => location.pathname === path;
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
 
   return (
     <header
@@ -61,127 +62,132 @@ export default function Navbar({ healthState }) {
         scrolled ? 'shadow-soft' : 'shadow-none'
       }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2 xl:gap-4">
         {/* Brand Logo & Name */}
-        <Link to="/" className="flex items-center space-x-3 group flex-shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-[#163B46] flex items-center justify-center shadow-soft group-hover:bg-[#244F59] transition-colors">
+        <Link to="/" className="flex items-center space-x-2.5 sm:space-x-3 group shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#163B46] flex items-center justify-center shadow-soft group-hover:bg-[#244F59] transition-colors shrink-0">
             <Compass className="w-5 h-5 text-[#18B8A6]" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center space-x-1">
-              <span className="text-xl font-extrabold text-[#163B46] tracking-tight">
+              <span className="text-lg sm:text-xl font-extrabold text-[#163B46] tracking-tight whitespace-nowrap">
                 TravelSense<span className="text-[#18B8A6]">AI</span>
               </span>
             </div>
-            <span className="text-[10px] text-[#829196] tracking-wider font-semibold uppercase">
+            <span className="text-[9px] sm:text-[10px] text-[#829196] tracking-wider font-semibold uppercase whitespace-nowrap">
               Smart Travel Planner
             </span>
           </div>
         </Link>
 
-        {/* Desktop Navigation Links */}
-        <nav className="hidden lg:flex items-center space-x-1">
-          {navLinks.map((link) => {
-            const Icon = link.icon;
-            const active = isActive(link.path);
-            return (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={`relative px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center space-x-1.5 ${
-                  active
-                    ? 'text-[#18B8A6] bg-[#18B8A6]/10 border border-[#18B8A6]/20 font-semibold'
-                    : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#EEF3F1]'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 ${active ? 'text-[#18B8A6]' : 'text-[#829196]'}`} />
-                <span>{link.name}</span>
-                {link.badge && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-[#18B8A6] text-[9px] font-bold text-white leading-none">
-                    {link.badge}
+        {/* If on Auth/Login page, don't show navigation options or extra action buttons */}
+        {!isAuthPage && (
+          <>
+            {/* Desktop Navigation Links */}
+            <nav className="hidden xl:flex items-center space-x-1 shrink-0">
+              {navLinks.map((link) => {
+                const Icon = link.icon;
+                const active = isActive(link.path);
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`relative px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 whitespace-nowrap ${
+                      active
+                        ? 'text-[#129889] bg-[#18B8A6]/10 border border-[#18B8A6]/30 shadow-xs font-bold'
+                        : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#EEF3F1] border border-transparent'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#18B8A6]' : 'text-[#829196]'}`} />
+                    <span className="whitespace-nowrap">{link.name}</span>
+                    {link.badge && (
+                      <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-[#18B8A6] text-[9px] font-bold text-white leading-none shrink-0">
+                        {link.badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            {/* Right Section: API Health Pill & User / Auth Actions */}
+            <div className="hidden sm:flex items-center space-x-2 shrink-0">
+              {/* API Status Indicator */}
+              <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#F4F7F6] border border-[#DCE6E3] text-[11px] font-medium text-[#52636A] whitespace-nowrap shrink-0">
+                <Server className="w-3 h-3 text-[#829196] shrink-0" />
+                {status === 'loading' && (
+                  <span className="flex items-center text-[#E6A23C]">
+                    <RefreshCw className="w-2.5 h-2.5 animate-spin mr-1 shrink-0" />
+                    API Check
                   </span>
                 )}
-              </Link>
-            );
-          })}
-        </nav>
+                {status === 'success' && (
+                  <span className="flex items-center text-[#16A36A]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#16A36A] animate-pulse mr-1.5 shrink-0" />
+                    API Online {latency ? `(${latency}ms)` : ''}
+                  </span>
+                )}
+                {status === 'error' && (
+                  <span className="flex items-center text-[#DC5555]">
+                    <AlertCircle className="w-2.5 h-2.5 mr-1 shrink-0" />
+                    API Offline
+                  </span>
+                )}
+              </div>
 
-        {/* Right Section: API Health Pill & User / Auth Actions */}
-        <div className="hidden sm:flex items-center space-x-3">
-          {/* API Status Indicator */}
-          <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#EEF3F1] border border-[#DCE6E3] text-[11px] font-medium text-[#52636A]">
-            <Server className="w-3 h-3 text-[#829196]" />
-            {status === 'loading' && (
-              <span className="flex items-center text-[#E6A23C]">
-                <RefreshCw className="w-2.5 h-2.5 animate-spin mr-1" />
-                API Check
-              </span>
-            )}
-            {status === 'success' && (
-              <span className="flex items-center text-[#16A36A]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#16A36A] animate-pulse mr-1" />
-                API Online {latency ? `(${latency}ms)` : ''}
-              </span>
-            )}
-            {status === 'error' && (
-              <span className="flex items-center text-[#DC5555]">
-                <AlertCircle className="w-2.5 h-2.5 mr-1" />
-                API Offline
-              </span>
-            )}
-          </div>
-
-          {/* User Controls */}
-          {isAuthenticated ? (
-            <div className="flex items-center space-x-2">
-              <Link
-                to="/profile"
-                className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-white border border-[#DCE6E3] hover:border-[#18B8A6] text-xs font-medium text-[#163B46] shadow-soft transition-all"
-              >
-                <UserIcon className="w-3.5 h-3.5 text-[#18B8A6]" />
-                <span className="max-w-[120px] truncate">{user?.full_name || 'My Profile'}</span>
-              </Link>
-              <button
-                onClick={handleLogout}
-                title="Log out"
-                className="p-1.5 rounded-xl bg-white border border-[#DCE6E3] text-[#829196] hover:text-[#DC5555] hover:border-[#DC5555]/30 transition-colors shadow-soft"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+              {/* User Controls */}
+              {isAuthenticated ? (
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  <Link
+                    to="/profile"
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#DCE6E3] hover:border-[#18B8A6] text-xs font-semibold text-[#163B46] shadow-soft transition-all whitespace-nowrap shrink-0"
+                  >
+                    <UserIcon className="w-3.5 h-3.5 text-[#18B8A6] shrink-0" />
+                    <span className="max-w-[110px] truncate">{user?.full_name || 'My Profile'}</span>
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    title="Log out"
+                    className="p-1.5 rounded-xl bg-white border border-[#DCE6E3] text-[#829196] hover:text-[#DC5555] hover:border-[#DC5555]/30 transition-colors shadow-soft shrink-0"
+                  >
+                    <LogOut className="w-4 h-4 shrink-0" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  <Link
+                    to="/login"
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-[#163B46] hover:bg-[#EEF3F1] transition-colors flex items-center space-x-1 whitespace-nowrap shrink-0"
+                  >
+                    <LogIn className="w-3.5 h-3.5 mr-1 text-[#52636A] shrink-0" />
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#18B8A6] hover:bg-[#129889] text-white shadow-soft transition-all hover:scale-[1.02] whitespace-nowrap shrink-0"
+                  >
+                    Get Started
+                  </Link>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <Link
-                to="/login"
-                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#163B46] hover:bg-[#EEF3F1] transition-colors flex items-center space-x-1"
-              >
-                <LogIn className="w-3.5 h-3.5 mr-1 text-[#52636A]" />
-                Sign In
-              </Link>
-              <Link
-                to="/register"
-                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-[#18B8A6] hover:bg-[#129889] text-white shadow-soft transition-all hover:scale-[1.02]"
-              >
-                Get Started
-              </Link>
-            </div>
-          )}
-        </div>
 
-        {/* Mobile Menu Toggle Button */}
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="lg:hidden p-2 rounded-xl bg-[#EEF3F1] border border-[#DCE6E3] text-[#163B46] hover:bg-white"
-          aria-label="Toggle navigation menu"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+            {/* Mobile / Tablet Menu Toggle Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="xl:hidden p-2 rounded-xl bg-[#EEF3F1] border border-[#DCE6E3] text-[#163B46] hover:bg-white shrink-0"
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Mobile Drawer Menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden bg-white border-b border-[#DCE6E3] px-4 pt-3 pb-6 space-y-3 shadow-soft-lg animate-in slide-in-from-top-2 duration-150">
-          <div className="grid grid-cols-2 gap-2">
+      {/* Mobile / Tablet Drawer Menu */}
+      {!isAuthPage && mobileMenuOpen && (
+        <div className="xl:hidden bg-white border-b border-[#DCE6E3] px-4 pt-3 pb-6 space-y-3 shadow-soft-lg animate-in slide-in-from-top-2 duration-150">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {navLinks.map((link) => {
               const Icon = link.icon;
               const active = isActive(link.path);

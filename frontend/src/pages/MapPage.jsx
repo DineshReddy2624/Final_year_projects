@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useTrip } from '../context/TripContext';
 import MapComponent from '../components/MapComponent';
-import { formatCurrency, formatDistanceKm, getCategoryBadgeColor } from '../utils/formatters';
+import { formatCurrency, formatDistanceKm, getCategoryBadgeColor, capitalizeWords } from '../utils/formatters';
 
 export default function MapPage() {
   const navigate = useNavigate();
@@ -24,7 +24,7 @@ export default function MapPage() {
 
   const destinationName = currentItinerary?.destination || tripPlan.destination || 'Hyderabad';
 
-  // Gather stops from active day or all days
+  // Gather stops from active day or all days (including source origin departure & return)
   const activeStops = React.useMemo(() => {
     if (!currentItinerary || !currentItinerary.days) return [];
 
@@ -32,12 +32,10 @@ export default function MapPage() {
     currentItinerary.days.forEach((day) => {
       if (activeDayFilter === 'all' || String(day.day_number) === activeDayFilter) {
         (day.stops || []).forEach((stop) => {
-          if (!stop.is_start_location && !stop.is_end_location) {
-            stops.push({
-              ...stop,
-              dayNumber: day.day_number,
-            });
-          }
+          stops.push({
+            ...stop,
+            dayNumber: day.day_number,
+          });
         });
       }
     });
@@ -88,16 +86,42 @@ export default function MapPage() {
             itinerary={currentItinerary}
             standalonePlaces={!currentItinerary ? recommendations : []}
             height="620px"
+            selectedDay={activeDayFilter}
+            onDayChange={setActiveDayFilter}
           />
 
           {/* Quick Map Legend */}
           <div className="p-4 rounded-2xl bg-white border border-[#DCE6E3] shadow-soft flex flex-wrap items-center justify-between text-xs text-[#52636A] gap-3">
-            <div className="flex items-center space-x-5">
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="flex items-center space-x-1.5">
+                <span className="w-4 h-4 rounded-full bg-emerald-600 flex items-center justify-center text-[10px] text-white">
+                  🚩
+                </span>
+                <span className="font-medium text-[#26383D]">Source / Return</span>
+              </span>
+              <span className="flex items-center space-x-1.5">
+                <span className="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-[10px] text-white">
+                  ☕
+                </span>
+                <span className="font-medium text-[#26383D]">Rest Stop</span>
+              </span>
+              <span className="flex items-center space-x-1.5">
+                <span className="w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-[10px] text-white">
+                  🏨
+                </span>
+                <span className="font-medium text-[#26383D]">Midway Hotel</span>
+              </span>
+              <span className="flex items-center space-x-1.5">
+                <span className="w-4 h-4 rounded-full bg-indigo-600 flex items-center justify-center text-[10px] text-white">
+                  🏨
+                </span>
+                <span className="font-medium text-[#26383D]">Dest Hotel</span>
+              </span>
               <span className="flex items-center space-x-1.5">
                 <span className="w-4 h-4 rounded-full bg-[#18B8A6] flex items-center justify-center text-[10px] font-bold text-white shadow-xs">
                   1
                 </span>
-                <span className="font-medium text-[#26383D]">Visiting Sequence</span>
+                <span className="font-medium text-[#26383D]">Attraction</span>
               </span>
               <span className="flex items-center space-x-1.5">
                 <span className="w-4 h-4 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[10px] text-emerald-800">
@@ -125,7 +149,7 @@ export default function MapPage() {
                 <span>Visiting Stops Sequence</span>
               </h3>
               <span className="text-xs text-[#18B8A6] font-bold bg-[#18B8A6]/10 px-2.5 py-0.5 rounded-full border border-[#18B8A6]/20">
-                {activeStops.length} Place{activeStops.length > 1 ? 's' : ''}
+                {activeStops.length} Stop{activeStops.length !== 1 ? 's' : ''}
               </span>
             </div>
 
@@ -142,39 +166,117 @@ export default function MapPage() {
                   </button>
                 </div>
               ) : (
-                activeStops.map((stop, index) => (
-                  <div
-                    key={stop.place_id || index}
-                    className="p-3.5 rounded-xl bg-[#F4F7F6] border border-[#DCE6E3] hover:border-[#829196]/40 transition-all space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-5 h-5 rounded-full bg-[#18B8A6] text-white text-[11px] font-extrabold flex items-center justify-center shadow-xs">
-                          {stop.stop_order || index + 1}
+                activeStops.map((stop, index) => {
+                  const isStart = stop.is_start_location;
+                  const isEnd = stop.is_end_location;
+                  const isRestStop = stop.is_rest_stop;
+                  const isHotelStay = stop.is_hotel_stay;
+                  const isStopover = stop.is_stopover;
+
+                  return (
+                    <div
+                      key={stop.place_id || `${stop.dayNumber}-${index}`}
+                      className={`p-3.5 rounded-xl border transition-all space-y-2 ${
+                        isStart
+                          ? 'bg-emerald-50/70 border-emerald-300'
+                          : isEnd
+                          ? 'bg-slate-50 border-slate-300'
+                          : isRestStop
+                          ? 'bg-amber-50/70 border-amber-300'
+                          : isHotelStay
+                          ? isStopover
+                            ? 'bg-orange-50/70 border-orange-300'
+                            : 'bg-indigo-50/70 border-indigo-300'
+                          : 'bg-[#F4F7F6] border-[#DCE6E3] hover:border-[#829196]/40'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          {isStart ? (
+                            <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center shadow-xs">
+                              🚩
+                            </span>
+                          ) : isEnd ? (
+                            <span className="w-5 h-5 rounded-full bg-[#163B46] text-white text-[10px] font-extrabold flex items-center justify-center shadow-xs">
+                              🏁
+                            </span>
+                          ) : isRestStop ? (
+                            <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow-xs">
+                              ☕
+                            </span>
+                          ) : isHotelStay ? (
+                            <span className={`w-5 h-5 rounded-full ${isStopover ? 'bg-orange-500' : 'bg-indigo-600'} text-white text-[10px] font-extrabold flex items-center justify-center shadow-xs`}>
+                              🏨
+                            </span>
+                          ) : (
+                            <span className="w-5 h-5 rounded-full bg-[#18B8A6] text-white text-[11px] font-extrabold flex items-center justify-center shadow-xs">
+                              {stop.stop_order || index + 1}
+                            </span>
+                          )}
+                          <div className="flex items-center space-x-1.5 flex-wrap">
+                            <h4 className="text-xs font-bold text-[#163B46] line-clamp-1">
+                              {capitalizeWords(stop.name)}
+                            </h4>
+                            {isStart && (
+                              <span className="text-[9px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-200">
+                                Departure
+                              </span>
+                            )}
+                            {isEnd && (
+                              <span className="text-[9px] font-extrabold text-[#163B46] bg-teal-100 px-1.5 py-0.2 rounded border border-teal-200">
+                                Return
+                              </span>
+                            )}
+                            {isRestStop && (
+                              <span className="text-[9px] font-extrabold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300">
+                                Rest Stop
+                              </span>
+                            )}
+                            {isHotelStay && (
+                              <span className={`text-[9px] font-extrabold ${isStopover ? 'text-orange-800 bg-orange-100 border-orange-300' : 'text-indigo-800 bg-indigo-100 border-indigo-300'} px-1.5 py-0.2 rounded border`}>
+                                {isStopover ? 'Midway Hotel' : 'Dest Hotel'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-semibold text-[#829196]">Day {stop.dayNumber}</span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[#52636A] pt-1">
+                        <span className="flex items-center space-x-1">
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>
+                            {stop.arrival_time} {stop.departure_time && stop.departure_time !== stop.arrival_time ? `- ${stop.departure_time}` : ''}
+                          </span>
                         </span>
-                        <h4 className="text-xs font-bold text-[#163B46] line-clamp-1">{stop.name}</h4>
+                        <span className="font-semibold text-[#16A36A]">
+                          {isStart || isEnd ? (
+                            <span className="text-emerald-700 text-[10px] font-bold">Base Hub</span>
+                          ) : isHotelStay ? (
+                            stop.total_entrance_fee > 0 ? (
+                              <span className="text-emerald-700 font-bold">{formatCurrency(stop.total_entrance_fee)}/nt</span>
+                            ) : (
+                              'Lodging'
+                            )
+                          ) : isRestStop ? (
+                            <span className="text-amber-700 text-[10px] font-medium">Refreshments</span>
+                          ) : stop.total_entrance_fee > 0 ? (
+                            formatCurrency(stop.total_entrance_fee)
+                          ) : (
+                            'Free'
+                          )}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-semibold text-[#829196]">Day {stop.dayNumber}</span>
-                    </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-[#52636A] pt-1">
-                      <span className="flex items-center space-x-1">
-                        <Clock className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{stop.arrival_time} - {stop.departure_time}</span>
-                      </span>
-                      <span className="font-semibold text-[#16A36A]">
-                        {stop.total_entrance_fee > 0 ? formatCurrency(stop.total_entrance_fee) : 'Free'}
-                      </span>
+                      {stop.travel_distance_km > 0 && (
+                        <div className="text-[10px] text-[#829196] flex items-center space-x-1 pt-0.5">
+                          <Navigation className="w-3 h-3 text-[#18B8A6]" />
+                          <span>Transit leg: {formatDistanceKm(stop.travel_distance_km)}</span>
+                        </div>
+                      )}
                     </div>
-
-                    {stop.travel_distance_km > 0 && (
-                      <div className="text-[10px] text-[#829196] flex items-center space-x-1 pt-0.5">
-                        <Navigation className="w-3 h-3 text-[#18B8A6]" />
-                        <span>Transit leg: {formatDistanceKm(stop.travel_distance_km)}</span>
-                      </div>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

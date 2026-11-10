@@ -46,9 +46,14 @@ async def register_user(
     # Hash password using Argon2
     hashed_pwd = hash_password(payload.password)
 
+    # Resolve full name
+    user_name = (payload.full_name or payload.username or normalized_email.split("@")[0]).strip()
+    if not user_name:
+        user_name = "Traveler"
+
     # Create user entity
     new_user = User(
-        full_name=payload.full_name.strip(),
+        full_name=user_name,
         email=normalized_email,
         hashed_password=hashed_pwd,
         is_active=True,

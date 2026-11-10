@@ -1,6 +1,10 @@
+from pathlib import Path
 from typing import List, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_DEFAULT_DB_PATH = (_BACKEND_DIR / "travelsenseai.db").as_posix()
 
 
 class Settings(BaseSettings):
@@ -10,12 +14,12 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api"
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    HOST: str = "127.0.0.1"
+    PORT: int = 8005
     LOG_LEVEL: str = "INFO"
 
-    # Database Configuration (SQLite default)
-    DATABASE_URL: str = "sqlite:///./travelsenseai.db"
+    # Database Configuration (SQLite default pointing to backend/travelsenseai.db)
+    DATABASE_URL: str = f"sqlite:///{_DEFAULT_DB_PATH}"
 
     # Security & JWT Configuration
     JWT_SECRET_KEY: str = "travelsenseai_super_secret_jwt_key_2026_change_in_production_9f8e7d"

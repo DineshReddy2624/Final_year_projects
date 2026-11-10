@@ -21,6 +21,8 @@ try:
         ItineraryStop,
         POIScheduleInput,
     )
+    from app.algorithms.journey_evaluator import JourneyEvaluator, journey_evaluator
+    from app.services.hotel_service import hotel_service
 except ImportError:
     from backend.app.algorithms.budget_calculator import calculate_itinerary_budget
     from backend.app.algorithms.itinerary_optimizer import calculate_itinerary_utility
@@ -40,6 +42,8 @@ except ImportError:
         ItineraryStop,
         POIScheduleInput,
     )
+    from backend.app.algorithms.journey_evaluator import JourneyEvaluator, journey_evaluator
+    from backend.app.services.hotel_service import hotel_service
 
 client = TestClient(app)
 
@@ -496,4 +500,232 @@ def test_itinerary_validation_rejection_invalid_dates():
     # Schema validation catches end_date < start_date
     res = client.post("/api/itinerary/generate", json=payload)
     assert res.status_code == 422
+
+
+def test_generate_car_round_trip_with_source_and_fuel_metrics():
+    """Test generating a multi-day car itinerary starting from a Source and returning to Source."""
+    six_pois = [p.model_dump() for p in SAMPLE_ATTRACTIONS] + [
+        POIScheduleInput(
+            id="birla_mandir",
+            name="Birla Mandir",
+            latitude=17.4062,
+            longitude=78.4691,
+            category="temple",
+            visit_duration_mins=60,
+            entrance_fee=0.0,
+            is_fee_verified=True,
+            is_outdoor=True,
+        ).model_dump()
+    ]
+
+    payload = {
+        "destination": "Hyderabad",
+        "source": "Hyderabad Airport (RGIA)",
+        "round_trip": True,
+        "start_date": "2026-11-10",
+        "end_date": "2026-11-11",
+        "travelers_count": 2,
+        "budget": 10000.0,
+        "daily_available_hours": 8.0,
+        "transportation": "driving-car",
+        "vehicle_fuel_type": "petrol",
+        "vehicle_mileage_kmpl": 14.0,
+        "fuel_price_per_litre": 105.0,
+        "attractions": six_pois,
+    }
+
+    res = client.post("/api/itinerary/generate", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    # Source & Circuit checks
+    assert data["source_location"] is not None
+    assert "Hyderabad Airport" in data["source_location"]["name"]
+    assert data["round_trip"] is True
+
+    # Check that each day has at least 3 attraction places, starts at source and returns to source
+    assert len(data["days"]) == 2
+    for day in data["days"]:
+        # Stops include: Start (Source), >=3 attractions, Return (Source)
+        assert len(day["stops"]) >= 5
+        assert day["stops"][0]["is_start_location"] is True
+        assert "Hyderabad Airport" in day["stops"][0]["name"]
+        assert day["stops"][-1]["is_end_location"] is True
+        assert "Return" in day["stops"][-1]["name"]
+
+        # Number of actual attraction stops per day >= 3
+        attraction_stops = [s for s in day["stops"] if not s["is_start_location"] and not s["is_end_location"]]
+        assert len(attraction_stops) >= 3
+
+    # Check vehicle petrol telemetry
+    vm = data["vehicle_metrics"]
+    assert vm is not None
+    assert vm["transportation"] == "driving-car"
+    assert vm["fuel_type"] == "petrol"
+    assert vm["mileage_kmpl"] == 14.0
+    assert vm["fuel_price_per_litre"] == 105.0
+    assert vm["estimated_fuel_litres"] > 0.0
+    assert vm["estimated_fuel_cost"] > 0.0
+    assert vm["parking_and_tolls_estimate"] > 0.0
+    assert vm["total_transit_cost"] > 0.0
+
+
+@pytest.mark.anyio
+async def test_journey_evaluator_comfortable_vs_long():
+    """Verify JourneyEvaluator correctly classifies comfortable (<5.5h) vs long journeys (>5.5h)."""
+    evaluator = JourneyEvaluator()
+
+    # 1. Comfortable journey (short drive ~1.5h, 60km)
+    res_a = await evaluator.evaluate_journey(
+        source_name="Hyderabad Airport (RGIA)",
+        destination_name="Hyderabad",
+        source_coords={"lat": 17.2403, "lon": 78.4294},
+        dest_coords={"lat": 17.3850, "lon": 78.4867},
+        max_daily_hours=5.5,
+    )
+    assert res_a.total_driving_duration_hours < 5.5
+    assert res_a.is_overnight_stop_recommended is False
+
+    # 2. Long Journey: Rajampet -> Hyderabad (~465 km, ~8.5h drive)
+    res_b = await evaluator.evaluate_journey(
+        source_name="Rajampet, Y.S.R. Kadapa, Andhra Pradesh",
+        destination_name="Hyderabad, Telangana",
+        source_coords={"lat": 14.1950, "lon": 79.1550},
+        dest_coords={"lat": 17.3850, "lon": 78.4867},
+        max_daily_hours=5.5,
+    )
+    assert "Result B" in res_b.journey_classification or "Result C" in res_b.journey_classification
+    assert res_b.total_driving_duration_hours >= 5.5
+    assert res_b.is_overnight_stop_recommended is True
+    assert len(res_b.recommended_stopover_towns) > 0
+    assert len(res_b.outbound_rest_stops) >= 1
+
+
+@pytest.mark.anyio
+async def test_hotel_recommendation_and_budget_breakdown():
+    """Test HotelService stopover & destination recommendations and budget separation."""
+    # Test destination hotel recommendation
+    dest_hotel, alts = await hotel_service.generate_destination_recommendation(
+        dest_coords={"lat": 17.3850, "lon": 78.4867},
+        dest_name="Hyderabad",
+        tier="standard",
+        stay_nights=3,
+        rooms_needed=1,
+    )
+    assert dest_hotel is not None
+    assert dest_hotel.estimated_nightly_price > 0
+    assert dest_hotel.total_stay_cost == dest_hotel.estimated_nightly_price * 3
+    assert dest_hotel.booking_url is not None
+
+    # Test stopover hotel recommendation
+    stopover_hotel, s_alts = await hotel_service.generate_stopover_recommendation(
+        stopover_town="Kurnool",
+        stopover_coords={"lat": 15.8281, "lon": 78.0373},
+        tier="standard",
+        rooms_needed=1,
+    )
+    assert stopover_hotel is not None
+    assert stopover_hotel.category == "stopover_hotel"
+    assert stopover_hotel.estimated_nightly_price > 0
+    assert stopover_hotel.total_stay_cost == stopover_hotel.estimated_nightly_price * 1
+
+    # Test budget calculator breakdown
+    budget_res = calculate_itinerary_budget(
+        total_budget=50000.0,
+        travelers_count=2,
+        total_days=5,
+        total_distance_km=1100.0,
+        transportation="driving-car",
+        stops_data=[
+            {
+                "place_id": "rajampet_origin",
+                "name": "Rajampet Departure Hub",
+                "total_entrance_fee": 0.0,
+                "fee_status": "free",
+                "is_start_location": True,
+            },
+            {
+                "place_id": stopover_hotel.hotel_id,
+                "name": stopover_hotel.name,
+                "total_entrance_fee": 0.0,
+                "fee_status": "free",
+                "is_hotel_stay": True,
+                "is_stopover": True,
+            },
+        ],
+        include_accommodation=True,
+        accommodation_type="standard",
+        dietary_budget_tier="moderate",
+        fuel_type="petrol",
+        mileage_kmpl=14.0,
+        fuel_price_per_litre=105.0,
+        stopover_hotel=stopover_hotel,
+        destination_hotel=dest_hotel,
+        rooms_needed=1,
+    )
+    assert budget_res.stopover_accommodation_cost == stopover_hotel.total_stay_cost
+    assert budget_res.destination_accommodation_cost == dest_hotel.total_stay_cost
+    assert budget_res.total_accommodation_cost == (stopover_hotel.total_stay_cost + dest_hotel.total_stay_cost)
+    assert budget_res.by_category.stopover_accommodation == stopover_hotel.total_stay_cost
+    assert budget_res.by_category.destination_accommodation == dest_hotel.total_stay_cost
+    assert budget_res.vehicle_metrics is not None
+    assert budget_res.vehicle_metrics.estimated_fuel_cost > 0.0
+    assert not budget_res.is_budget_exceeded
+
+
+def test_intercity_rajampet_to_hyderabad_api():
+    """Test full intercity journey planning API for Rajampet -> Hyderabad 5-day trip."""
+    payload = {
+        "destination": "Hyderabad, Telangana",
+        "source": "Rajampet, Y.S.R. Kadapa, Andhra Pradesh",
+        "round_trip": True,
+        "start_date": "2026-11-17",
+        "end_date": "2026-11-21",
+        "travelers_count": 2,
+        "budget": 50000.0,
+        "daily_available_hours": 8.0,
+        "transportation": "driving-car",
+        "vehicle_fuel_type": "petrol",
+        "vehicle_mileage_kmpl": 14.0,
+        "fuel_price_per_litre": 105.0,
+        "accommodation_type": "standard",
+        "include_accommodation": True,
+        "max_daily_driving_hours": 5.5,
+        "enable_stopover_recommendation": True,
+        "rooms_needed": 1,
+    }
+
+    res = client.post("/api/itinerary/generate", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    # Journey assessment check
+    assert data["journey_assessment"] is not None
+    ja = data["journey_assessment"]
+    assert "Result B" in ja["journey_classification"]
+    assert ja["is_overnight_stop_recommended"] is True
+    assert len(ja["recommended_stopover_towns"]) > 0
+
+    # Accommodations
+    assert data["stopover_accommodation"] is not None
+    assert data["destination_accommodation"] is not None
+    assert data["stopover_accommodation"]["category"] == "stopover_hotel"
+
+    # 5-day structure
+    assert len(data["days"]) == 5
+    # Day 1: Highway transit & stopover check-in
+    day1 = data["days"][0]
+    assert any(s.get("is_rest_stop") for s in day1["stops"])
+    assert any(s.get("is_hotel_stay") and s.get("is_stopover") for s in day1["stops"])
+
+    # Day 5: Return to source
+    day5 = data["days"][4]
+    assert day5["stops"][-1]["is_end_location"] is True
+
+    # Total distance & budget
+    assert data["total_distance_km"] > 900.0
+    assert data["budget_summary"]["estimated_total_cost"] <= 50000.0
+    assert not data["budget_summary"]["is_budget_exceeded"]
+
+
 

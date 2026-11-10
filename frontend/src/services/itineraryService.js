@@ -3,6 +3,8 @@ import apiClient from './api';
 export const itineraryService = {
   async generateItinerary({
     destination,
+    source = 'Hyderabad Airport (RGIA)',
+    roundTrip = true,
     startDate,
     endDate,
     travelersCount = 1,
@@ -11,9 +13,22 @@ export const itineraryService = {
     transportation = 'driving-car',
     pace = 'moderate',
     selectedAttractions = null,
+    fuelType = 'petrol',
+    mileageKmpl = 14.0,
+    fuelPricePerLitre = 105.0,
+    accommodationType = 'standard',
+    includeAccommodation = true,
+    maxDailyDrivingHours = 5.5,
+    enableStopoverRecommendation = true,
+    roomsNeeded = null,
+    preferredStopoverTown = null,
+    selectedStopoverHotelId = null,
+    selectedDestinationHotelId = null,
   }) {
     const payload = {
       destination,
+      source,
+      round_trip: roundTrip,
       start_date: startDate,
       end_date: endDate,
       travelers_count: parseInt(travelersCount, 10),
@@ -21,6 +36,17 @@ export const itineraryService = {
       daily_available_hours: parseFloat(dailyAvailableHours),
       transportation,
       pace,
+      vehicle_fuel_type: fuelType,
+      vehicle_mileage_kmpl: parseFloat(mileageKmpl || 14.0),
+      fuel_price_per_litre: parseFloat(fuelPricePerLitre || 105.0),
+      accommodation_type: accommodationType,
+      include_accommodation: includeAccommodation,
+      max_daily_driving_hours: parseFloat(maxDailyDrivingHours || 5.5),
+      enable_stopover_recommendation: enableStopoverRecommendation,
+      rooms_needed: roomsNeeded ? parseInt(roomsNeeded, 10) : null,
+      preferred_stopover_town: preferredStopoverTown || null,
+      selected_stopover_hotel_id: selectedStopoverHotelId || null,
+      selected_destination_hotel_id: selectedDestinationHotelId || null,
     };
 
     if (selectedAttractions && selectedAttractions.length > 0) {

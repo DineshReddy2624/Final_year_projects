@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { MapPin, Utensils, Clock, DollarSign, Navigation, Calendar } from 'lucide-react';
-import { formatCurrency } from '../utils/formatters';
+import { MapPin, Utensils, Clock, DollarSign, Navigation, Calendar, Layers } from 'lucide-react';
+import { formatCurrency, capitalizeWords } from '../utils/formatters';
 
 // Map Auto-Fitter Helper Component
 function ChangeView({ bounds }) {
@@ -73,7 +73,136 @@ const createRestaurantIcon = () => {
   });
 };
 
+const createOriginIcon = (isReturn = false) => {
+  return L.divIcon({
+    className: 'custom-map-marker-origin',
+    html: `
+      <div style="
+        background: ${isReturn ? 'linear-gradient(135deg, #163B46, #0D2228)' : 'linear-gradient(135deg, #10B981, #059669)'};
+        color: #ffffff;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+        border: 2.5px solid #ffffff;
+      ">
+        ${isReturn ? '🏁' : '🚩'}
+      </div>
+    `,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  });
+};
+
+const createRestStopIcon = () => {
+  return L.divIcon({
+    className: 'custom-map-marker-rest-stop',
+    html: `
+      <div style="
+        background: linear-gradient(135deg, #F59E0B, #D97706);
+        color: #ffffff;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        box-shadow: 0 4px 12px rgba(217, 119, 6, 0.4);
+        border: 2.5px solid #ffffff;
+      ">
+        ☕
+      </div>
+    `,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -18],
+  });
+};
+
+const createStopoverHotelIcon = () => {
+  return L.divIcon({
+    className: 'custom-map-marker-stopover-hotel',
+    html: `
+      <div style="
+        background: linear-gradient(135deg, #F97316, #C2410C);
+        color: #ffffff;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        box-shadow: 0 4px 14px rgba(249, 115, 22, 0.45);
+        border: 2.5px solid #ffffff;
+      ">
+        🏨
+      </div>
+    `,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  });
+};
+
+const createDestinationHotelIcon = () => {
+  return L.divIcon({
+    className: 'custom-map-marker-dest-hotel',
+    html: `
+      <div style="
+        background: linear-gradient(135deg, #6366F1, #4338CA);
+        color: #ffffff;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45);
+        border: 2.5px solid #ffffff;
+      ">
+        🏨
+      </div>
+    `,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  });
+};
+
 const DAY_COLORS = ['#18B8A6', '#163B46', '#244F59', '#16A36A', '#E6A23C', '#0284C7'];
+
+// 100% Free & Open-Source Tile Providers (No API Key Required)
+const TILE_PROVIDERS = {
+  osm: {
+    id: 'osm',
+    name: 'OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  },
+  humanitarian: {
+    id: 'humanitarian',
+    name: 'Humanitarian',
+    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors, <a href="https://www.hotosm.org/" target="_blank" rel="noreferrer">HOT</a>',
+    maxZoom: 19,
+  },
+  topo: {
+    id: 'topo',
+    name: 'Topographic',
+    url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors, <a href="https://opentopomap.org" target="_blank" rel="noreferrer">OpenTopoMap</a>',
+    maxZoom: 17,
+  },
+};
 
 export default function MapComponent({
   itinerary,
@@ -82,8 +211,24 @@ export default function MapComponent({
   zoom = 12,
   height = '500px',
   selectedDay = null, // null means all days
+  onDayChange = null,
 }) {
   const [activeDayFilter, setActiveDayFilter] = useState(selectedDay || 'all');
+  const [activeTileKey, setActiveTileKey] = useState('osm');
+  const activeTile = TILE_PROVIDERS[activeTileKey] || TILE_PROVIDERS.osm;
+
+  useEffect(() => {
+    if (selectedDay !== undefined && selectedDay !== null) {
+      setActiveDayFilter(selectedDay);
+    }
+  }, [selectedDay]);
+
+  const handleDayFilterSelect = (val) => {
+    setActiveDayFilter(val);
+    if (onDayChange) {
+      onDayChange(val);
+    }
+  };
 
   // Parse stops from itinerary days
   const { allStops, mealBreaks, dayPolylines } = useMemo(() => {
@@ -99,9 +244,9 @@ export default function MapComponent({
       const color = DAY_COLORS[dayIndex % DAY_COLORS.length];
       const dayCoordinates = [];
 
-      // Process stops
+      // Process stops (including source origin and round-trip return)
       (day.stops || []).forEach((stop) => {
-        if (!stop.is_start_location && !stop.is_end_location && stop.latitude && stop.longitude) {
+        if (stop.latitude && stop.longitude) {
           stopsList.push({
             ...stop,
             dayNumber: day.day_number,
@@ -121,11 +266,17 @@ export default function MapComponent({
         }
       });
 
-      // Process route geometry string if returned by backend
+      // Process route geometry (either [[lat, lon], ...] or space-delimited string)
       let polylinePoints = [];
       if (day.geometry && Array.isArray(day.geometry) && day.geometry.length > 0) {
         day.geometry.forEach((item) => {
-          if (typeof item === 'string') {
+          if (Array.isArray(item) && item.length === 2) {
+            const lat = parseFloat(item[0]);
+            const lon = parseFloat(item[1]);
+            if (!isNaN(lat) && !isNaN(lon)) {
+              polylinePoints.push([lat, lon]);
+            }
+          } else if (typeof item === 'string') {
             const parts = item.trim().split(/\s+/);
             for (let i = 0; i < parts.length - 1; i += 2) {
               const lat = parseFloat(parts[i]);
@@ -138,7 +289,7 @@ export default function MapComponent({
         });
       }
 
-      // If backend geometry was straight point-to-point, fallback to stop coordinates
+      // If backend geometry was straight point-to-point, fallback to full stop coordinates (Source -> POIs -> Return)
       if (polylinePoints.length < 2) {
         polylinePoints = dayCoordinates;
       }
@@ -204,7 +355,7 @@ export default function MapComponent({
               Filter Day:
             </span>
             <button
-              onClick={() => setActiveDayFilter('all')}
+              onClick={() => handleDayFilterSelect('all')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 activeDayFilter === 'all'
                   ? 'bg-[#18B8A6] text-white shadow-soft'
@@ -216,7 +367,7 @@ export default function MapComponent({
             {itinerary.days.map((day, idx) => (
               <button
                 key={day.day_number}
-                onClick={() => setActiveDayFilter(String(day.day_number))}
+                onClick={() => handleDayFilterSelect(String(day.day_number))}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 ${
                   activeDayFilter === String(day.day_number)
                     ? 'bg-[#163B46] text-white shadow-soft'
@@ -232,7 +383,19 @@ export default function MapComponent({
             ))}
           </div>
 
-          <div className="hidden sm:flex items-center space-x-3 text-[11px] text-[#52636A] font-medium">
+          <div className="hidden sm:flex flex-wrap items-center gap-3 text-[11px] text-[#52636A] font-medium">
+            <span className="flex items-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mr-1.5" /> 🚩 Source / Return
+            </span>
+            <span className="flex items-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-1.5" /> ☕ Rest Break
+            </span>
+            <span className="flex items-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-500 mr-1.5" /> 🏨 Midway Hotel
+            </span>
+            <span className="flex items-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 mr-1.5" /> 🏨 Dest Hotel
+            </span>
             <span className="flex items-center">
               <span className="w-2.5 h-2.5 rounded-full bg-[#18B8A6] mr-1.5" /> Attraction
             </span>
@@ -248,6 +411,44 @@ export default function MapComponent({
 
       {/* Map Container */}
       <div style={{ height }} className="w-full relative z-10">
+        {/* Floating Open-Source Tile Switcher */}
+        <div className="absolute top-3 right-3 z-[1000] bg-white/95 backdrop-blur-md rounded-xl p-1 shadow-soft border border-[#DCE6E3] hidden sm:flex items-center space-x-1 text-[11px] font-semibold text-[#52636A]">
+          <Layers className="w-3.5 h-3.5 text-[#18B8A6] ml-1.5 mr-0.5 shrink-0" />
+          <button
+            type="button"
+            onClick={() => setActiveTileKey('osm')}
+            className={`px-2 py-1 rounded-lg transition-all ${
+              activeTileKey === 'osm'
+                ? 'bg-[#18B8A6] text-white shadow-xs font-bold'
+                : 'hover:bg-[#EEF3F1] hover:text-[#163B46]'
+            }`}
+          >
+            OSM Standard
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTileKey('humanitarian')}
+            className={`px-2 py-1 rounded-lg transition-all ${
+              activeTileKey === 'humanitarian'
+                ? 'bg-[#18B8A6] text-white shadow-xs font-bold'
+                : 'hover:bg-[#EEF3F1] hover:text-[#163B46]'
+            }`}
+          >
+            Humanitarian
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTileKey('topo')}
+            className={`px-2 py-1 rounded-lg transition-all ${
+              activeTileKey === 'topo'
+                ? 'bg-[#18B8A6] text-white shadow-xs font-bold'
+                : 'hover:bg-[#EEF3F1] hover:text-[#163B46]'
+            }`}
+          >
+            Topographic
+          </button>
+        </div>
+
         <MapContainer
           center={resolvedCenter}
           zoom={zoom}
@@ -256,11 +457,12 @@ export default function MapComponent({
         >
           <ChangeView bounds={mapBounds} />
 
-          {/* OpenStreetMap CartoDB Voyager Light tiles */}
+          {/* 100% Free & Open-Source Tile Layer (No API Key Required) */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-            maxZoom={19}
+            key={activeTileKey}
+            attribution={activeTile.attribution}
+            url={activeTile.url}
+            maxZoom={activeTile.maxZoom}
           />
 
           {/* Route Polylines */}
@@ -280,53 +482,130 @@ export default function MapComponent({
           ))}
 
           {/* Sequential Itinerary Stops */}
-          {visibleStops.map((stop, index) => (
-            <Marker
-              key={`stop-${stop.place_id || stop.id || index}`}
-              position={[stop.latitude, stop.longitude]}
-              icon={createNumberIcon(stop.stop_order || index + 1, stop.color)}
-            >
-              <Popup>
-                <div className="space-y-2 p-1 text-[#26383D] min-w-[210px]">
-                  <div className="flex items-center justify-between border-b border-[#DCE6E3] pb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#18B8A6]">
-                      Day {stop.dayNumber} • Stop #{stop.stop_order || index + 1}
-                    </span>
-                    <span className="text-[10px] text-[#52636A] capitalize">{stop.category || 'Sight'}</span>
-                  </div>
+          {visibleStops.map((stop, index) => {
+            const isStart = stop.is_start_location;
+            const isEnd = stop.is_end_location;
+            const isRestStop = stop.is_rest_stop;
+            const isHotelStay = stop.is_hotel_stay;
+            const isStopover = stop.is_stopover;
 
-                  <h4 className="text-sm font-bold text-[#163B46] leading-tight">{stop.name}</h4>
+            let markerIcon;
+            if (isStart) {
+              markerIcon = createOriginIcon(false);
+            } else if (isEnd) {
+              markerIcon = createOriginIcon(true);
+            } else if (isRestStop) {
+              markerIcon = createRestStopIcon();
+            } else if (isHotelStay) {
+              markerIcon = isStopover ? createStopoverHotelIcon() : createDestinationHotelIcon();
+            } else {
+              markerIcon = createNumberIcon(stop.stop_order || index + 1, stop.color);
+            }
 
-                  {stop.address && (
-                    <p className="text-[11px] text-[#52636A] line-clamp-2">{stop.address}</p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-1.5 pt-1 text-[11px] text-[#26383D]">
-                    <div className="flex items-center space-x-1">
-                      <Clock className="w-3 h-3 text-[#E6A23C]" />
-                      <span>{stop.arrival_time} - {stop.departure_time}</span>
+            return (
+              <Marker
+                key={`stop-${stop.place_id || stop.id || index}`}
+                position={[stop.latitude, stop.longitude]}
+                icon={markerIcon}
+              >
+                <Popup>
+                  <div className="space-y-2 p-1 text-[#26383D] min-w-[220px]">
+                    <div className="flex items-center justify-between border-b border-[#DCE6E3] pb-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#18B8A6]">
+                        {isStart
+                          ? 'Trip Origin / Source Hub'
+                          : isEnd
+                          ? 'Destination Return Hub'
+                          : isRestStop
+                          ? '☕ Highway Rest Break'
+                          : isHotelStay
+                          ? isStopover
+                            ? '🏨 Midway Stopover Hotel'
+                            : '🏨 Destination Hotel'
+                          : `Day ${stop.dayNumber} • Stop #${stop.stop_order || index + 1}`}
+                      </span>
+                      <span className="text-[10px] text-[#52636A] capitalize">
+                        {isStart
+                          ? 'Origin'
+                          : isEnd
+                          ? 'Return'
+                          : isRestStop
+                          ? 'Rest Stop'
+                          : isHotelStay
+                          ? 'Accommodation'
+                          : stop.category || 'Sight'}
+                      </span>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <DollarSign className="w-3 h-3 text-[#16A36A]" />
-                      <span>{stop.total_entrance_fee > 0 ? formatCurrency(stop.total_entrance_fee) : 'Free'}</span>
+
+                    <h4 className="text-sm font-bold text-[#163B46] leading-tight">
+                      {isStart ? '🚩 ' : isEnd ? '🏁 ' : isRestStop ? '☕ ' : isHotelStay ? '🏨 ' : ''}
+                      {capitalizeWords(stop.name)}
+                    </h4>
+
+                    {stop.address && (
+                      <p className="text-[11px] text-[#52636A] line-clamp-2">{stop.address}</p>
+                    )}
+
+                    {isRestStop && (
+                      <div className="p-1.5 bg-amber-50 rounded-lg border border-amber-200 text-[10px] text-amber-800">
+                        Recommended 30-min refreshment break to prevent driver fatigue.
+                      </div>
+                    )}
+
+                    {isHotelStay && (
+                      <div className="p-1.5 bg-indigo-50/70 rounded-lg border border-indigo-200 text-[10px] text-indigo-900 flex items-center justify-between">
+                        <span>{isStopover ? 'Midway corridor stopover' : 'Primary destination lodging'}</span>
+                        {stop.total_entrance_fee > 0 && (
+                          <span className="font-bold text-emerald-700">{formatCurrency(stop.total_entrance_fee)}/nt</span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 text-[11px] text-[#26383D]">
+                      <div className="flex items-center space-x-1">
+                        <Clock className="w-3 h-3 text-[#E6A23C]" />
+                        <span>
+                          {isStart
+                            ? `Depart: ${stop.departure_time || '09:00'}`
+                            : isEnd
+                            ? `Arrive: ${stop.arrival_time}`
+                            : `${stop.arrival_time} - ${stop.departure_time}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <DollarSign className="w-3 h-3 text-[#16A36A]" />
+                        <span>
+                          {isStart || isEnd
+                            ? 'Circuit Hub'
+                            : isHotelStay
+                            ? stop.total_entrance_fee > 0
+                              ? `${formatCurrency(stop.total_entrance_fee)}/night`
+                              : 'Included in Budget'
+                            : isRestStop
+                            ? 'Refreshments'
+                            : stop.total_entrance_fee > 0
+                            ? formatCurrency(stop.total_entrance_fee)
+                            : 'Free'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 text-center border-t border-[#DCE6E3]">
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${stop.latitude},${stop.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center space-x-1 text-[11px] text-[#18B8A6] hover:text-[#129889] font-semibold"
+                      >
+                        <Navigation className="w-3 h-3" />
+                        <span>Open in Google Maps</span>
+                      </a>
                     </div>
                   </div>
-
-                  <div className="pt-2 text-center border-t border-[#DCE6E3]">
-                    <a
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${stop.latitude},${stop.longitude}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center space-x-1 text-[11px] text-[#18B8A6] hover:text-[#129889] font-semibold"
-                    >
-                      <Navigation className="w-3 h-3" />
-                      <span>Open in Google Maps</span>
-                    </a>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {/* Scheduled Meal Stops */}
           {visibleMeals.map((meal, idx) => (

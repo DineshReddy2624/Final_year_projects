@@ -8,7 +8,8 @@ except ImportError:
 
 
 class UserRegisterRequest(BaseModel):
-    full_name: str = Field(min_length=1, max_length=100, examples=["John Doe"])
+    full_name: Optional[str] = Field(default=None, max_length=100, examples=["John Doe"])
+    username: Optional[str] = Field(default=None, max_length=100, examples=["johndoe"])
     email: EmailStr = Field(examples=["john@example.com"])
     password: str = Field(min_length=6, max_length=100, examples=["securepassword123"])
 

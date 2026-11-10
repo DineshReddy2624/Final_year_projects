@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Resolve backend base URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8005/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -37,7 +37,13 @@ apiClient.interceptors.response.use(
     if (typeof detail === 'string') {
       message = detail;
     } else if (Array.isArray(detail)) {
-      message = detail.map((d) => d.msg || d.message || JSON.stringify(d)).join(', ');
+      message = detail
+        .map((d) => {
+          const loc = Array.isArray(d.loc) ? d.loc.filter((x) => x !== 'body').join('.') : '';
+          const msg = d.msg || d.message || JSON.stringify(d);
+          return loc ? `${loc}: ${msg}` : msg;
+        })
+        .join(', ');
     } else if (error.response?.data?.message) {
       message = error.response.data.message;
     } else if (error.message) {

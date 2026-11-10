@@ -50,7 +50,7 @@ const reportService = {
    * @returns {string}
    */
   getDownloadUrl(reportId) {
-    const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+    const baseURL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'http://127.0.0.1:8005/api';
     return `${baseURL}/reports/${reportId}/download`;
   },
 };

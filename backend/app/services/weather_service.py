@@ -121,6 +121,18 @@ class WeatherService:
         """Retrieve daily forecasts and current conditions for given coordinates."""
         self.validate_coordinates(latitude, longitude)
 
+        # Ensure date objects
+        if isinstance(start_date, str):
+            try:
+                start_date = date.fromisoformat(start_date)
+            except Exception:
+                start_date = None
+        if isinstance(end_date, str):
+            try:
+                end_date = date.fromisoformat(end_date)
+            except Exception:
+                end_date = None
+
         # Date validation and warning check
         today = date.today()
         warning_msg: Optional[str] = None

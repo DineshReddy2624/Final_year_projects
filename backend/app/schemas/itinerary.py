@@ -2,6 +2,11 @@ from datetime import date
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field, field_validator
 
+try:
+    from app.schemas.hotel import AccommodationSummary, HotelItem, JourneyAssessmentResult
+except ImportError:
+    from backend.app.schemas.hotel import AccommodationSummary, HotelItem, JourneyAssessmentResult
+
 
 class POIScheduleInput(BaseModel):
     """Point of interest input for itinerary generation."""
@@ -12,7 +17,7 @@ class POIScheduleInput(BaseModel):
     longitude: float = Field(..., ge=-180.0, le=180.0, description="Longitude in decimal degrees")
     category: Optional[str] = Field(default="attraction", description="Category or interest theme")
     address: Optional[str] = Field(default=None, description="Physical address")
-    visit_duration_mins: int = Field(default=90, ge=10, le=720, description="Estimated visit duration in minutes")
+    visit_duration_mins: int = Field(default=90, ge=0, le=720, description="Estimated visit duration in minutes")
     opening_hours: Optional[str] = Field(
         default=None, description="Opening hours specification (e.g., '09:00-18:00', '10:00-17:00')"
     )
@@ -67,16 +72,69 @@ class ItineraryGenerateRequest(BaseModel):
         default=None,
         description="Optional list of specific attractions to schedule. If omitted, discovered automatically.",
     )
+    selected_attractions: Optional[List[POIScheduleInput]] = Field(
+        default=None,
+        description="Optional list of specific attractions to schedule (frontend alias).",
+    )
+    source: Optional[str] = Field(
+        default=None,
+        description="Starting location name or address (e.g. 'Hyderabad Airport', 'Banjara Hills', or hotel)",
+    )
+    round_trip: bool = Field(
+        default=True,
+        description="Whether the route starts at the source and returns back to the source",
+    )
+    vehicle_fuel_type: Optional[str] = Field(
+        default="petrol",
+        description="Fuel type for car transit: petrol, diesel, cng, electric",
+    )
+    fuel_price_per_litre: Optional[float] = Field(
+        default=105.0,
+        ge=0.0,
+        description="Fuel price per litre in INR",
+    )
+    vehicle_mileage_kmpl: Optional[float] = Field(
+        default=14.0,
+        gt=0.0,
+        description="Vehicle fuel efficiency in km/litre",
+    )
     interests: Optional[List[str]] = Field(
         default=None, description="User interest categories for automatic POI discovery"
     )
     include_accommodation: bool = Field(
-        default=False, description="Whether to include estimated accommodation costs in budget"
+        default=True, description="Whether to include estimated accommodation costs in budget"
     )
     accommodation_type: Optional[str] = Field(
         default="standard",
-        pattern="^(budget|standard|luxury)$",
-        description="Category of accommodation if included",
+        description="Category: budget, standard, premium, luxury, homestay, resort, hostel",
+    )
+    max_daily_driving_hours: Optional[float] = Field(
+        default=5.5,
+        gt=1.0,
+        le=24.0,
+        description="Max continuous daily driving hours threshold before recommending overnight stop (default 5.5h)",
+    )
+    enable_stopover_recommendation: bool = Field(
+        default=True,
+        description="Enable automatic distance-based hotel and stopover recommendation",
+    )
+    preferred_stopover_town: Optional[str] = Field(
+        default=None,
+        description="User-selected midway town for overnight stop",
+    )
+    selected_stopover_hotel_id: Optional[str] = Field(
+        default=None,
+        description="Specific hotel ID chosen for stopover",
+    )
+    selected_destination_hotel_id: Optional[str] = Field(
+        default=None,
+        description="Specific hotel ID chosen for destination",
+    )
+    rooms_needed: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=20,
+        description="Custom number of hotel rooms required",
     )
     dietary_budget_tier: Optional[str] = Field(
         default="moderate",
@@ -134,6 +192,13 @@ class ItineraryStop(BaseModel):
     is_outdoor: bool = False
     is_start_location: bool = False
     is_end_location: bool = False
+    is_rest_stop: bool = False
+    is_hotel_stay: bool = False
+    is_stopover: bool = False
+    hotel_category: Optional[str] = Field(
+        default=None, description="'stopover_hotel' or 'destination_hotel'"
+    )
+    hotel_details: Optional[HotelItem] = None
     image_url: Optional[str] = None
     image_attribution: Optional[str] = None
 
@@ -186,7 +251,26 @@ class ExpenseCategoryBreakdown(BaseModel):
     entrance_fees: float
     food: float
     accommodation: float
+    stopover_accommodation: float = Field(default=0.0, description="Cost of en-route stopover hotels")
+    destination_accommodation: float = Field(default=0.0, description="Cost of destination hotels")
     contingency_buffer: float
+
+
+class VehicleTravelMetrics(BaseModel):
+    """Detailed vehicle telemetry, fuel consumption, and transit cost calculation."""
+
+    transportation: str = Field(default="driving-car", description="Mode of vehicle transit")
+    fuel_type: str = Field(default="petrol", description="Fuel type: petrol, diesel, cng, electric")
+    total_distance_km: float = Field(default=0.0, description="Total road distance covered across the circuit in km")
+    mileage_kmpl: float = Field(default=14.0, description="Vehicle fuel efficiency in km/litre")
+    fuel_price_per_litre: float = Field(default=105.0, description="Fuel price per litre in INR")
+    estimated_fuel_litres: float = Field(default=0.0, description="Total fuel volume required in litres")
+    estimated_fuel_cost: float = Field(default=0.0, description="Total estimated fuel expense in INR")
+    parking_and_tolls_estimate: float = Field(default=0.0, description="Estimated parking fees & toll passes in INR")
+    total_transit_cost: float = Field(default=0.0, description="Combined road transit expenditure (fuel + tolls + parking)")
+    is_round_trip: bool = Field(default=True, description="Whether the circuit starts and finishes at origin source")
+    source_name: Optional[str] = Field(default=None, description="Starting and terminating source location")
+    notes: List[str] = Field(default_factory=list, description="Telemetry calculation breakdown notes")
 
 
 class BudgetCalculationResult(BaseModel):
@@ -202,6 +286,15 @@ class BudgetCalculationResult(BaseModel):
     has_unknown_expenses: bool
     by_provenance: PriceCategoryBreakdown
     by_category: ExpenseCategoryBreakdown
+    stopover_accommodation_cost: float = Field(default=0.0, description="Cost of transit stopover hotels")
+    destination_accommodation_cost: float = Field(default=0.0, description="Cost of destination hotels")
+    total_accommodation_cost: float = Field(default=0.0, description="Total combined accommodation cost")
+    accommodation_summary: Optional[AccommodationSummary] = Field(
+        default=None, description="Detailed accommodation breakdown and alternatives"
+    )
+    vehicle_metrics: Optional[VehicleTravelMetrics] = Field(
+        default=None, description="Detailed vehicle fuel and travel telemetry when traveling by car"
+    )
     budget_notes: List[str] = Field(default_factory=list)
 
 
@@ -238,6 +331,31 @@ class ItineraryResponse(BaseModel):
     budget_summary: BudgetCalculationResult
     utility: ItineraryUtility
     days: List[ItineraryDayPlan]
+    journey_assessment: Optional[JourneyAssessmentResult] = Field(
+        default=None, description="Intelligent distance assessment & driving fatigue analysis"
+    )
+    stopover_accommodation: Optional[HotelItem] = Field(
+        default=None, description="Recommended midway stopover hotel if journey is long"
+    )
+    destination_accommodation: Optional[HotelItem] = Field(
+        default=None, description="Recommended hotel at trip destination"
+    )
+    alternative_stopover_hotels: List[HotelItem] = Field(
+        default_factory=list, description="Alternative hotel options in midway town"
+    )
+    alternative_destination_hotels: List[HotelItem] = Field(
+        default_factory=list, description="Alternative hotel options at destination"
+    )
+    accommodation_summary: Optional[AccommodationSummary] = Field(
+        default=None, description="Complete accommodation cost and room allocation summary"
+    )
+    source_location: Optional[POIScheduleInput] = Field(
+        default=None, description="Starting and returning source location for round-trip circuit"
+    )
+    round_trip: bool = Field(default=True, description="True if trip starts and ends at the source")
+    vehicle_metrics: Optional[VehicleTravelMetrics] = Field(
+        default=None, description="Detailed vehicle fuel and travel telemetry for car trips"
+    )
     feasibility_status: str = Field(default="feasible", description="'feasible' or 'feasible_with_warnings'")
     unresolved_constraints: List[str] = Field(default_factory=list)
     general_notes: List[str] = Field(default_factory=list)

@@ -16,6 +16,13 @@ import {
   CheckCircle2,
   AlertCircle,
   Wand2,
+  Fuel,
+  Navigation,
+  RotateCcw,
+  Hotel,
+  Bed,
+  Coffee,
+  ShieldAlert,
 } from 'lucide-react';
 import { useTrip } from '../context/TripContext';
 import recommendationService from '../services/recommendationService';
@@ -26,6 +33,43 @@ import ErrorMessage from '../components/ErrorMessage';
 import { formatCurrency } from '../utils/formatters';
 
 const POPULAR_DESTINATIONS = ['Hyderabad', 'Bengaluru', 'Jaipur', 'Goa', 'Delhi', 'Mumbai'];
+
+const POPULAR_ORIGINS = {
+  hyderabad: [
+    'Rajampet, Y.S.R. Kadapa, Andhra Pradesh',
+    'Hyderabad Airport (RGIA)',
+    'Secunderabad Railway Station',
+    'Banjara Hills',
+    'Tirupati, Andhra Pradesh',
+    'Charminar Area',
+  ],
+  bengaluru: [
+    'Kempegowda Int. Airport (BLR)',
+    'Bangalore City Railway Station (KSR)',
+    'Indiranagar',
+    'Koramangala',
+  ],
+  jaipur: [
+    'Jaipur International Airport',
+    'Jaipur Junction',
+    'MI Road / City Palace Area',
+  ],
+  goa: [
+    'Goa Dabolim Airport',
+    'Mopa Manohar Airport',
+    'Panaji Central',
+  ],
+  delhi: [
+    'Indira Gandhi Int. Airport (DEL)',
+    'New Delhi Railway Station (NDLS)',
+    'Connaught Place',
+  ],
+  mumbai: [
+    'Mumbai Airport (BOM)',
+    'CSMT Station',
+    'Bandra West',
+  ],
+};
 
 const AVAILABLE_INTERESTS = [
   'Historical Places',
@@ -49,14 +93,30 @@ export default function PlanTripPage() {
 
   // Form states
   const [destination, setDestination] = useState(tripPlan.destination || 'Hyderabad');
+  const [source, setSource] = useState(tripPlan.source || 'Hyderabad Airport (RGIA)');
+  const [roundTrip, setRoundTrip] = useState(tripPlan.roundTrip !== undefined ? tripPlan.roundTrip : true);
   const [startDate, setStartDate] = useState(tripPlan.startDate);
   const [endDate, setEndDate] = useState(tripPlan.endDate);
   const [travelersCount, setTravelersCount] = useState(tripPlan.travelersCount || 1);
   const [budget, setBudget] = useState(tripPlan.budget || 5000);
   const [transportation, setTransportation] = useState(tripPlan.transportation || 'driving-car');
+  const [fuelType, setFuelType] = useState(tripPlan.fuelType || 'petrol');
+  const [mileageKmpl, setMileageKmpl] = useState(tripPlan.mileageKmpl || 14.0);
+  const [fuelPricePerLitre, setFuelPricePerLitre] = useState(tripPlan.fuelPricePerLitre || 105.0);
   const [pace, setPace] = useState(tripPlan.pace || 'relaxed');
   const [dailyHours, setDailyHours] = useState(tripPlan.dailyAvailableHours || 8.0);
   const [interests, setInterests] = useState(tripPlan.interests || ['Historical Places', 'Food', 'Culture']);
+
+  // Accommodation & Long-Distance Stopover States (Phase 6)
+  const [accommodationType, setAccommodationType] = useState(tripPlan.accommodationType || 'standard');
+  const [includeAccommodation, setIncludeAccommodation] = useState(
+    tripPlan.includeAccommodation !== undefined ? tripPlan.includeAccommodation : true
+  );
+  const [maxDailyDrivingHours, setMaxDailyDrivingHours] = useState(tripPlan.maxDailyDrivingHours || 5.5);
+  const [enableStopoverRecommendation, setEnableStopoverRecommendation] = useState(
+    tripPlan.enableStopoverRecommendation !== undefined ? tripPlan.enableStopoverRecommendation : true
+  );
+  const [roomsNeeded, setRoomsNeeded] = useState(tripPlan.roomsNeeded || 1);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -132,6 +192,11 @@ export default function PlanTripPage() {
   const syncPlanContext = () => {
     updatePlan({
       destination,
+      source,
+      roundTrip,
+      fuelType,
+      mileageKmpl,
+      fuelPricePerLitre,
       startDate,
       endDate,
       travelersCount,
@@ -140,6 +205,11 @@ export default function PlanTripPage() {
       pace,
       dailyAvailableHours: dailyHours,
       interests,
+      accommodationType,
+      includeAccommodation,
+      maxDailyDrivingHours,
+      enableStopoverRecommendation,
+      roomsNeeded,
     });
   };
 
@@ -186,6 +256,8 @@ export default function PlanTripPage() {
     try {
       const itin = await itineraryService.generateItinerary({
         destination,
+        source,
+        roundTrip,
         startDate,
         endDate,
         travelersCount,
@@ -193,6 +265,14 @@ export default function PlanTripPage() {
         dailyAvailableHours: dailyHours,
         transportation,
         pace,
+        fuelType,
+        mileageKmpl,
+        fuelPricePerLitre,
+        accommodationType,
+        includeAccommodation,
+        maxDailyDrivingHours,
+        enableStopoverRecommendation,
+        roomsNeeded,
       });
 
       setCurrentItinerary(itin);
@@ -251,6 +331,30 @@ export default function PlanTripPage() {
             {/* Quick Prompts */}
             <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[#52636A]">
               <span className="text-[#829196] font-medium">Quick Fill:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const q = 'Plan a relaxed 5-day road trip from Rajampet, Y.S.R. Kadapa, Andhra Pradesh to Hyderabad for 2 travelers with ₹50,000 budget by car.';
+                  setNlQuery(q);
+                  setDestination('Hyderabad');
+                  setSource('Rajampet, Y.S.R. Kadapa, Andhra Pradesh');
+                  setTravelersCount(2);
+                  setBudget(50000);
+                  setTransportation('driving-car');
+                  setPace('relaxed');
+                  setMileageKmpl(14.0);
+                  setFuelPricePerLitre(105.0);
+                  setAccommodationType('standard');
+                  setIncludeAccommodation(true);
+                  setMaxDailyDrivingHours(5.5);
+                  setEnableStopoverRecommendation(true);
+                  setStartDate('2026-11-17');
+                  setEndDate('2026-11-21');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold transition-colors shadow-2xs"
+              >
+                Rajampet → Hyderabad 5-Day (₹50k Long Drive)
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -334,7 +438,13 @@ export default function PlanTripPage() {
                 <button
                   key={dest}
                   type="button"
-                  onClick={() => setDestination(dest)}
+                  onClick={() => {
+                    setDestination(dest);
+                    const cityOrigins = POPULAR_ORIGINS[dest.toLowerCase()];
+                    if (cityOrigins && cityOrigins.length > 0) {
+                      setSource(cityOrigins[0]);
+                    }
+                  }}
                   className={`text-xs px-3 py-1 rounded-xl border transition-all ${
                     destination.toLowerCase() === dest.toLowerCase()
                       ? 'bg-[#18B8A6] text-white border-[#18B8A6] font-bold shadow-soft'
@@ -348,12 +458,62 @@ export default function PlanTripPage() {
           </div>
         </div>
 
-        {/* Section 2: Dates & Duration */}
+        {/* Section 2: Origin Source Location & Round-Trip Circuit */}
+        <div className="p-5 rounded-2xl bg-[#F4F7F6] border border-[#DCE6E3] space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center">
+              <Navigation className="w-3.5 h-3.5 mr-1.5 text-[#18B8A6]" />
+              2. Trip Starting Location / Source (Origin Hub)
+            </label>
+            <label className="inline-flex items-center space-x-2 text-xs font-semibold text-[#163B46] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={roundTrip}
+                onChange={(e) => setRoundTrip(e.target.checked)}
+                className="w-4 h-4 text-[#18B8A6] rounded focus:ring-[#18B8A6] border-[#DCE6E3]"
+              />
+              <span className="flex items-center space-x-1">
+                <RotateCcw className="w-3.5 h-3.5 text-[#18B8A6]" />
+                <span>Round-Trip Circuit (Return to Source)</span>
+              </span>
+            </label>
+          </div>
+
+          <div className="space-y-2">
+            <input
+              type="text"
+              required
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              placeholder="e.g. Hyderabad Airport (RGIA), Banjara Hills, Hotel, or Station"
+              className="w-full px-4 py-2.5 rounded-xl bg-white border border-[#DCE6E3] focus:border-[#18B8A6] text-sm text-[#26383D] placeholder-[#829196] focus:outline-none transition-all shadow-xs"
+            />
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              <span className="text-[11px] text-[#829196] mr-1 font-medium">Quick hubs:</span>
+              {(POPULAR_ORIGINS[destination.toLowerCase()] || POPULAR_ORIGINS.hyderabad).map((hub) => (
+                <button
+                  key={hub}
+                  type="button"
+                  onClick={() => setSource(hub)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
+                    source.toLowerCase() === hub.toLowerCase()
+                      ? 'bg-[#163B46] text-white border-[#163B46] font-bold shadow-xs'
+                      : 'bg-white text-[#52636A] border-[#DCE6E3] hover:bg-[#EEF3F1] hover:text-[#163B46]'
+                  }`}
+                >
+                  {hub}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: Dates & Duration */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center">
               <Calendar className="w-3.5 h-3.5 mr-1.5 text-[#18B8A6]" />
-              2. Start Date
+              3. Start Date
             </label>
             <input
               type="date"
@@ -385,12 +545,12 @@ export default function PlanTripPage() {
           </div>
         </div>
 
-        {/* Section 3: Travelers & Budget */}
+        {/* Section 4: Travelers & Budget */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center">
               <Users className="w-3.5 h-3.5 mr-1.5 text-[#18B8A6]" />
-              3. Number of Travelers
+              4. Number of Travelers
             </label>
             <div className="flex items-center space-x-2 bg-[#F4F7F6] border border-[#DCE6E3] p-1.5 rounded-xl">
               {[1, 2, 3, 4, 6].map((num) => (
@@ -431,12 +591,12 @@ export default function PlanTripPage() {
           </div>
         </div>
 
-        {/* Section 4: Transportation & Pacing */}
+        {/* Section 5: Transportation & Pacing */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {/* Transport */}
           <div className="space-y-2">
             <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider">
-              4. Transportation
+              5. Transportation
             </label>
             <div className="grid grid-cols-3 gap-1.5 bg-[#F4F7F6] p-1.5 rounded-xl border border-[#DCE6E3]">
               {[
@@ -516,7 +676,151 @@ export default function PlanTripPage() {
           </div>
         </div>
 
-        {/* Section 5: Interests Selection */}
+        {/* Car Petrol & Vehicle Telemetry Live Estimator Card */}
+        {transportation === 'driving-car' && (
+          <div className="p-5 rounded-2xl bg-emerald-50/80 border border-emerald-200/90 space-y-3 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/60 pb-2.5">
+              <div className="flex items-center space-x-2 text-xs font-bold text-[#16A36A]">
+                <Fuel className="w-4 h-4 text-[#16A36A]" />
+                <span>Car Fuel, Petrol Distance & Telemetry Engine</span>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-800 bg-white/80 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                Mileage: {mileageKmpl} km/L • Petrol @ ₹{fuelPricePerLitre}/L
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="p-2.5 rounded-xl bg-white border border-emerald-100 flex items-center space-x-2.5">
+                <Navigation className="w-4 h-4 text-[#18B8A6] shrink-0" />
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider">Starting Point:</span>
+                  <span className="font-bold text-[#163B46] truncate block">{source || 'Hyderabad Airport'}</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-emerald-100 flex items-center space-x-2.5">
+                <RotateCcw className="w-4 h-4 text-[#16A36A] shrink-0" />
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider">Circuit Routing:</span>
+                  <span className="font-bold text-[#16A36A]">{roundTrip ? 'Starts & Ends at Source' : 'One-Way Tour'}</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-white border border-emerald-100 flex items-center space-x-2.5">
+                <CheckCircle2 className="w-4 h-4 text-[#16A36A] shrink-0" />
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider">Daily Quota:</span>
+                  <span className="font-bold text-[#163B46]">At least 3 Places/Day</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#52636A] leading-relaxed">
+              Based on your car travel mode, our engine determines the road distance, fuel consumption in litres, petrol costs, and adds parking & highway toll buffers. The 2-Opt road optimizer connects each attraction to ensure your trip gets completed seamlessly.
+            </p>
+          </div>
+        )}
+
+        {/* Section 6: Intelligent Distance Assessment & Hotel Recommendations (Phase 6 Engine) */}
+        <div className="p-5 rounded-2xl bg-amber-50/70 border border-amber-200/90 space-y-4 shadow-2xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/60 pb-2.5">
+            <div className="flex items-center space-x-2 text-xs font-bold text-amber-900">
+              <Hotel className="w-4 h-4 text-amber-600" />
+              <span>Intelligent Distance Assessment & Hotel Recommendation Engine</span>
+            </div>
+            <label className="inline-flex items-center space-x-2 text-xs font-semibold text-amber-900 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enableStopoverRecommendation}
+                onChange={(e) => setEnableStopoverRecommendation(e.target.checked)}
+                className="w-4 h-4 text-amber-600 rounded focus:ring-amber-500 border-amber-300"
+              />
+              <span>Auto-Recommend Midway Stopover Hotels (&gt;5.5h drives)</span>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Accommodation Tier */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center">
+                <Bed className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                Hotel Category
+              </label>
+              <select
+                value={accommodationType}
+                onChange={(e) => setAccommodationType(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-semibold text-[#163B46] focus:outline-none focus:border-amber-500"
+              >
+                <option value="budget">Budget Hotel (₹1,400 - ₹2,200/nt)</option>
+                <option value="standard">Standard Hotel (₹2,800 - ₹4,500/nt)</option>
+                <option value="premium">Premium Hotel (₹5,000 - ₹8,000/nt)</option>
+                <option value="luxury">Luxury Hotel (₹8,500 - ₹16,000/nt)</option>
+                <option value="homestay">Homestay (₹1,800 - ₹3,200/nt)</option>
+                <option value="resort">Resort (₹6,000 - ₹14,000/nt)</option>
+                <option value="hostel">Hostel (₹750 - ₹1,400/nt)</option>
+              </select>
+            </div>
+
+            {/* Max Daily Continuous Driving Hours */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center">
+                  <Clock className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                  Max Driving Hours
+                </span>
+                <span className="text-[11px] font-bold text-amber-700">{maxDailyDrivingHours}h limit</span>
+              </label>
+              <div className="flex items-center space-x-1.5 bg-white p-1 rounded-xl border border-amber-200">
+                {[4.0, 5.5, 7.0, 8.0].map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setMaxDailyDrivingHours(h)}
+                    className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                      maxDailyDrivingHours === h
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-[#52636A] hover:bg-amber-50'
+                    }`}
+                  >
+                    {h}h{h === 5.5 ? ' ⭐' : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Rooms Count */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center justify-between">
+                <span>Rooms Required</span>
+                <span className="text-[11px] text-[#829196]">
+                  {roomsNeeded} Room{roomsNeeded > 1 ? 's' : ''}
+                </span>
+              </label>
+              <div className="flex items-center space-x-1.5 bg-white p-1 rounded-xl border border-amber-200">
+                {[1, 2, 3, 4].map((rm) => (
+                  <button
+                    key={rm}
+                    type="button"
+                    onClick={() => setRoomsNeeded(rm)}
+                    className={`flex-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                      roomsNeeded === rm
+                        ? 'bg-[#163B46] text-white shadow-xs'
+                        : 'text-[#52636A] hover:bg-amber-50'
+                    }`}
+                  >
+                    {rm} {rm === 1 ? 'Room' : 'Rooms'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-amber-900/80 leading-relaxed">
+            When driving duration exceeds comfortable thresholds (e.g. Rajampet → Hyderabad ~8.5h), the engine automatically classifies the trip as <strong>Result B: Long Journey</strong> and recommends verified midway stopover hotels (e.g. in Kurnool or Nandyal) along with highway refreshment rest stops every ~130 km.
+          </p>
+        </div>
+
+        {/* Section 7: Interests Selection */}
         <div className="space-y-3">
           <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center justify-between">
             <span>7. Tourism Interests & Themes (Factor P)</span>

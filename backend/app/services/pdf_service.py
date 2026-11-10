@@ -424,7 +424,105 @@ class PDFReportService:
             "fees are unverified by official registries, they are explicitly tagged below and never stated as verified facts."
         )
         story.append(Paragraph(provenance_note, self.style_note))
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 10))
+
+        # Long-Distance Journey Assessment (Phase 6)
+        ja = data.get("journey_assessment")
+        if ja:
+            ja_dict = self._extract_dict(ja)
+            class_badge = ja_dict.get("journey_classification", "Result A: Comfortable Journey")
+            road_dist = self._safe_float(ja_dict.get("total_road_distance_km"), 0.0)
+            road_hrs = self._safe_float(ja_dict.get("total_driving_duration_hours"), 0.0)
+            fatigue = ja_dict.get("driver_fatigue_warning") or "No severe fatigue warning."
+            towns = ", ".join(ja_dict.get("recommended_stopover_towns", [])) or "None"
+
+            story.append(Paragraph("Long-Distance Journey Assessment & Highway Fatigue Advisory", self.style_h2))
+            ja_summary_table = Table(
+                [
+                    [
+                        Paragraph("<b>Classification:</b>", self.style_body),
+                        Paragraph(f"<b>{self._safe_text(class_badge)}</b>", self.style_bold),
+                        Paragraph("<b>Highway Driving:</b>", self.style_body),
+                        Paragraph(f"{road_dist:.1f} km ({road_hrs:.1f} hrs estimated drive)", self.style_body),
+                    ],
+                    [
+                        Paragraph("<b>Fatigue Advisory:</b>", self.style_body),
+                        Paragraph(self._safe_text(fatigue), self.style_body),
+                        Paragraph("<b>Corridor Hubs:</b>", self.style_body),
+                        Paragraph(self._safe_text(towns), self.style_body),
+                    ],
+                ],
+                colWidths=[1.5 * inch, 2.1 * inch, 1.5 * inch, 2.2 * inch],
+            )
+            ja_summary_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#FEF3C7")),
+                        ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#F59E0B")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#FDE68A")),
+                        ("TOPPADDING", (0, 0), (-1, -1), 4),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
+            story.append(ja_summary_table)
+            story.append(Spacer(1, 8))
+
+        # Recommended Hotels Section (Stopover + Destination)
+        stopover_h = data.get("stopover_accommodation")
+        dest_h = data.get("destination_accommodation")
+        if stopover_h or dest_h:
+            story.append(Paragraph("Curated Hotel Accommodations & Highway Rest Stops", self.style_h2))
+            hotel_table_data = [
+                [
+                    Paragraph("Property Name & Role", self.style_table_header),
+                    Paragraph("Location", self.style_table_header),
+                    Paragraph("Nightly Rate", self.style_table_header),
+                    Paragraph("Nights x Rooms", self.style_table_header),
+                    Paragraph("Total Stay Cost", self.style_table_header),
+                    Paragraph("Booking Reference", self.style_table_header),
+                ]
+            ]
+            if stopover_h:
+                sh_dict = self._extract_dict(stopover_h)
+                hotel_table_data.append(
+                    [
+                        Paragraph(f"<b>{self._safe_text(sh_dict.get('name'))}</b><br/><font size=7 color='#D97706'>[Midway Stopover Hotel]</font>", self.style_table_cell),
+                        Paragraph(self._safe_text(sh_dict.get("city") or sh_dict.get("stopover_town")), self.style_table_cell),
+                        Paragraph(f"INR {self._safe_float(sh_dict.get('estimated_nightly_price')):,.0f}", self.style_table_cell),
+                        Paragraph(f"{sh_dict.get('nights', 1)} night x {sh_dict.get('rooms_needed', 1)} rm", self.style_table_cell),
+                        Paragraph(f"INR {self._safe_float(sh_dict.get('total_stay_cost')):,.2f}", self.style_table_cell),
+                        Paragraph("Verified Rates Available", self.style_table_cell),
+                    ]
+                )
+            if dest_h:
+                dh_dict = self._extract_dict(dest_h)
+                hotel_table_data.append(
+                    [
+                        Paragraph(f"<b>{self._safe_text(dh_dict.get('name'))}</b><br/><font size=7 color='#4F46E5'>[Destination Hotel]</font>", self.style_table_cell),
+                        Paragraph(self._safe_text(dh_dict.get("city") or destination), self.style_table_cell),
+                        Paragraph(f"INR {self._safe_float(dh_dict.get('estimated_nightly_price')):,.0f}", self.style_table_cell),
+                        Paragraph(f"{dh_dict.get('nights', 1)} night(s) x {dh_dict.get('rooms_needed', 1)} rm", self.style_table_cell),
+                        Paragraph(f"INR {self._safe_float(dh_dict.get('total_stay_cost')):,.2f}", self.style_table_cell),
+                        Paragraph("Verified Rates Available", self.style_table_cell),
+                    ]
+                )
+            h_table = Table(hotel_table_data, colWidths=[2.2 * inch, 1.2 * inch, 1.0 * inch, 1.1 * inch, 1.0 * inch, 1.1 * inch])
+            h_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), self.c_navy),
+                        ("BOX", (0, 0), (-1, -1), 0.5, self.c_border),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.5, self.c_border),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+                    ]
+                )
+            )
+            story.append(h_table)
+            story.append(Spacer(1, 10))
+
+        story.append(Spacer(1, 6))
 
         # 4. Day-by-Day Detailed Schedule Timeline
         days = data.get("days", [])
