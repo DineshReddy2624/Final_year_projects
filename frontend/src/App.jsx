@@ -17,10 +17,12 @@ import AssistantPage from './pages/AssistantPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ReportsPage from './pages/ReportsPage';
 import ProfilePage from './pages/ProfilePage';
+import LiveTripPage from './pages/LiveTripPage';
 
 // Context Providers & Hooks
 import { AuthProvider } from './context/AuthContext';
 import { TripProvider } from './context/TripContext';
+import { LiveTripProvider } from './context/LiveTripContext';
 import { useHealthCheck } from './hooks/useHealthCheck';
 
 export default function App() {
@@ -29,11 +31,12 @@ export default function App() {
   return (
     <AuthProvider>
       <TripProvider>
-        <BrowserRouter>
-          <div className="min-h-screen bg-[#F4F7F6] text-[#26383D] flex flex-col font-sans selection:bg-[#18B8A6]/20 selection:text-[#163B46]">
-            <Navbar healthState={healthState} />
-            <main className="flex-grow">
-              <Routes>
+        <LiveTripProvider>
+          <BrowserRouter>
+            <div className="min-h-screen bg-[#F4F7F6] text-[#26383D] flex flex-col font-sans selection:bg-[#18B8A6]/20 selection:text-[#163B46]">
+              <Navbar healthState={healthState} />
+              <main className="flex-grow">
+                <Routes>
                 {/* 1. Landing Page */}
                 <Route path="/" element={<LandingPage healthState={healthState} />} />
 
@@ -83,6 +86,9 @@ export default function App() {
                   }
                 />
 
+                {/* 12. Real-Time Live On-Trip Execution */}
+                <Route path="/live-trip" element={<LiveTripPage />} />
+
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
@@ -90,6 +96,7 @@ export default function App() {
             <Footer />
           </div>
         </BrowserRouter>
+        </LiveTripProvider>
       </TripProvider>
     </AuthProvider>
   );

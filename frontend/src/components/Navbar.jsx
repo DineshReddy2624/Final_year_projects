@@ -17,6 +17,7 @@ import {
   Server,
   AlertCircle,
   RefreshCw,
+  Navigation,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -42,6 +43,7 @@ export default function Navbar({ healthState }) {
     { name: 'Plan Trip', path: '/plan', icon: Calendar },
     { name: 'Attractions', path: '/recommendations', icon: MapPin },
     { name: 'Itinerary', path: '/itinerary', icon: Calendar },
+    { name: 'Live Trip', path: '/live-trip', icon: Navigation, badge: 'LIVE' },
     { name: 'Map', path: '/map', icon: MapIcon },
     { name: 'AI Assistant', path: '/assistant', icon: Sparkles, badge: 'AI' },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
@@ -55,6 +57,7 @@ export default function Navbar({ healthState }) {
 
   const isActive = (path) => location.pathname === path;
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  const isLandingPage = location.pathname === '/';
 
   return (
     <header
@@ -83,57 +86,61 @@ export default function Navbar({ healthState }) {
         {/* If on Auth/Login page, don't show navigation options or extra action buttons */}
         {!isAuthPage && (
           <>
-            {/* Desktop Navigation Links */}
-            <nav className="hidden xl:flex items-center space-x-1 shrink-0">
-              {navLinks.map((link) => {
-                const Icon = link.icon;
-                const active = isActive(link.path);
-                return (
-                  <Link
-                    key={link.path}
-                    to={link.path}
-                    className={`relative px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 whitespace-nowrap ${
-                      active
-                        ? 'text-[#129889] bg-[#18B8A6]/10 border border-[#18B8A6]/30 shadow-xs font-bold'
-                        : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#EEF3F1] border border-transparent'
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#18B8A6]' : 'text-[#829196]'}`} />
-                    <span className="whitespace-nowrap">{link.name}</span>
-                    {link.badge && (
-                      <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-[#18B8A6] text-[9px] font-bold text-white leading-none shrink-0">
-                        {link.badge}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
+            {/* Desktop Navigation Links — Only shown on internal app pages, hidden on Landing Page */}
+            {!isLandingPage && (
+              <nav className="hidden xl:flex items-center space-x-1 shrink-0">
+                {navLinks.map((link) => {
+                  const Icon = link.icon;
+                  const active = isActive(link.path);
+                  return (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      className={`relative px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 whitespace-nowrap ${
+                        active
+                          ? 'text-[#129889] bg-[#18B8A6]/10 border border-[#18B8A6]/30 shadow-xs font-bold'
+                          : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#EEF3F1] border border-transparent'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#18B8A6]' : 'text-[#829196]'}`} />
+                      <span className="whitespace-nowrap">{link.name}</span>
+                      {link.badge && (
+                        <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-[#18B8A6] text-[9px] font-bold text-white leading-none shrink-0">
+                          {link.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
 
             {/* Right Section: API Health Pill & User / Auth Actions */}
-            <div className="hidden sm:flex items-center space-x-2 shrink-0">
-              {/* API Status Indicator */}
-              <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#F4F7F6] border border-[#DCE6E3] text-[11px] font-medium text-[#52636A] whitespace-nowrap shrink-0">
-                <Server className="w-3 h-3 text-[#829196] shrink-0" />
-                {status === 'loading' && (
-                  <span className="flex items-center text-[#E6A23C]">
-                    <RefreshCw className="w-2.5 h-2.5 animate-spin mr-1 shrink-0" />
-                    API Check
-                  </span>
-                )}
-                {status === 'success' && (
-                  <span className="flex items-center text-[#16A36A]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#16A36A] animate-pulse mr-1.5 shrink-0" />
-                    API Online {latency ? `(${latency}ms)` : ''}
-                  </span>
-                )}
-                {status === 'error' && (
-                  <span className="flex items-center text-[#DC5555]">
-                    <AlertCircle className="w-2.5 h-2.5 mr-1 shrink-0" />
-                    API Offline
-                  </span>
-                )}
-              </div>
+            <div className="flex items-center space-x-2 shrink-0">
+              {/* API Status Indicator - only on internal pages */}
+              {!isLandingPage && (
+                <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#F4F7F6] border border-[#DCE6E3] text-[11px] font-medium text-[#52636A] whitespace-nowrap shrink-0">
+                  <Server className="w-3 h-3 text-[#829196] shrink-0" />
+                  {status === 'loading' && (
+                    <span className="flex items-center text-[#E6A23C]">
+                      <RefreshCw className="w-2.5 h-2.5 animate-spin mr-1 shrink-0" />
+                      API Check
+                    </span>
+                  )}
+                  {status === 'success' && (
+                    <span className="flex items-center text-[#16A36A]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#16A36A] animate-pulse mr-1.5 shrink-0" />
+                      API Online {latency ? `(${latency}ms)` : ''}
+                    </span>
+                  )}
+                  {status === 'error' && (
+                    <span className="flex items-center text-[#DC5555]">
+                      <AlertCircle className="w-2.5 h-2.5 mr-1 shrink-0" />
+                      API Offline
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* User Controls */}
               {isAuthenticated ? (
@@ -154,38 +161,40 @@ export default function Navbar({ healthState }) {
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center space-x-1.5 shrink-0">
+                <div className="flex items-center space-x-2 shrink-0">
                   <Link
                     to="/login"
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-[#163B46] hover:bg-[#EEF3F1] transition-colors flex items-center space-x-1 whitespace-nowrap shrink-0"
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-[#163B46] hover:bg-[#EEF3F1] transition-colors flex items-center space-x-1 whitespace-nowrap shrink-0"
                   >
                     <LogIn className="w-3.5 h-3.5 mr-1 text-[#52636A] shrink-0" />
                     Sign In
                   </Link>
                   <Link
                     to="/register"
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#18B8A6] hover:bg-[#129889] text-white shadow-soft transition-all hover:scale-[1.02] whitespace-nowrap shrink-0"
+                    className="px-4 py-1.5 rounded-xl text-xs font-extrabold bg-[#18B8A6] hover:bg-[#129889] text-white shadow-soft transition-all hover:scale-[1.02] whitespace-nowrap shrink-0"
                   >
-                    Get Started
+                    Register
                   </Link>
                 </div>
               )}
             </div>
 
-            {/* Mobile / Tablet Menu Toggle Button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="xl:hidden p-2 rounded-xl bg-[#EEF3F1] border border-[#DCE6E3] text-[#163B46] hover:bg-white shrink-0"
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+            {/* Mobile / Tablet Menu Toggle Button (only on internal app pages) */}
+            {!isLandingPage && (
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="xl:hidden p-2 rounded-xl bg-[#EEF3F1] border border-[#DCE6E3] text-[#163B46] hover:bg-white shrink-0"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            )}
           </>
         )}
       </div>
 
       {/* Mobile / Tablet Drawer Menu */}
-      {!isAuthPage && mobileMenuOpen && (
+      {!isAuthPage && !isLandingPage && mobileMenuOpen && (
         <div className="xl:hidden bg-white border-b border-[#DCE6E3] px-4 pt-3 pb-6 space-y-3 shadow-soft-lg animate-in slide-in-from-top-2 duration-150">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {navLinks.map((link) => {

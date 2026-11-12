@@ -226,6 +226,14 @@ export default function ItineraryPage() {
           </button>
 
           <button
+            onClick={() => navigate('/live-trip')}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-[#18B8A6] hover:from-emerald-700 hover:to-[#129889] text-white text-xs font-extrabold shadow-soft flex items-center space-x-1.5 transition-all"
+          >
+            <Navigation className="w-3.5 h-3.5 animate-pulse" />
+            <span>Start Live Trip Mode</span>
+          </button>
+
+          <button
             onClick={() => navigate('/map')}
             className="px-4 py-2.5 rounded-xl bg-white hover:bg-[#EEF3F1] text-[#18B8A6] text-xs font-semibold border border-[#DCE6E3] shadow-sm transition-colors flex items-center space-x-1.5"
           >

@@ -13,6 +13,7 @@ try:
     from app.api.routes.reports import router as reports_router
     from app.api.routes.users import router as users_router
     from app.api.routes.weather import router as weather_router
+    from app.api.routes.live_trip import router as live_trip_router
 except ImportError:
     from backend.app.api.health import router as health_router
     from backend.app.api.routes.ai import router as ai_router
@@ -26,6 +27,7 @@ except ImportError:
     from backend.app.api.routes.reports import router as reports_router
     from backend.app.api.routes.users import router as users_router
     from backend.app.api.routes.weather import router as weather_router
+    from backend.app.api.routes.live_trip import router as live_trip_router
 
 api_router = APIRouter()
 
@@ -50,6 +52,9 @@ api_router.include_router(clustering_router)
 
 # Phase 6 — Itinerary Generation & Budget Management
 api_router.include_router(itinerary_router)
+
+# Real-Time On-Trip Execution & Dynamic Replanning
+api_router.include_router(live_trip_router)
 
 # Phase 7 — AI Travel Assistant & RAG
 api_router.include_router(ai_router)
