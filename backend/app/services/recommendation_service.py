@@ -29,6 +29,11 @@ try:
     from app.services.image_service import image_service
     from app.services.ors_service import ors_service
     from app.services.weather_service import weather_service
+    from app.services.google_maps_service import google_maps_service
+    from app.services.destination_catalog import (
+        get_curated_regions_for_destination,
+        is_place_valid_for_destination,
+    )
 except ImportError:
     from backend.app.algorithms.poi_scoring import (
         ScoringWeights,
@@ -56,6 +61,11 @@ except ImportError:
     from backend.app.services.image_service import image_service
     from backend.app.services.ors_service import ors_service
     from backend.app.services.weather_service import weather_service
+    from backend.app.services.google_maps_service import google_maps_service
+    from backend.app.services.destination_catalog import (
+        get_curated_regions_for_destination,
+        is_place_valid_for_destination,
+    )
 
 
 class RecommendationService:
@@ -94,9 +104,18 @@ class RecommendationService:
                 detail=f"No points of interest could be discovered for destination '{request.destination}'.",
             )
 
-        # 4. Resolve origin coordinates for distance calculation
-        origin_lat = request.origin_latitude if request.origin_latitude is not None else dest_lat
-        origin_lon = request.origin_longitude if request.origin_longitude is not None else dest_lon
+        # 4. Resolve origin coordinates for destination sightseeing distance calculation
+        # If origin is an intercity departure hub (e.g. Rajampet > 40km away), use destination center coordinates
+        if request.origin_latitude is not None and request.origin_longitude is not None:
+            dist_from_dest = ors_service.haversine_distance_km(
+                request.origin_latitude, request.origin_longitude, dest_lat, dest_lon
+            )
+            if dist_from_dest > 40.0:
+                origin_lat, origin_lon = dest_lat, dest_lon
+            else:
+                origin_lat, origin_lon = request.origin_latitude, request.origin_longitude
+        else:
+            origin_lat, origin_lon = dest_lat, dest_lon
 
         # 5. Resolve scoring weights
         scoring_weights = (
@@ -348,13 +367,72 @@ class RecommendationService:
         db: Optional[Session] = None,
         destination_name: str = "",
     ) -> List[Dict[str, Any]]:
-        """Discover candidate POIs around the destination using Geoapify and DB."""
+        """Discover candidate POIs around the destination using Curated Regional Catalog,
+        Google Places, Geoapify, and Local DB, enforcing strict destination boundary validation.
+        """
         radius_meters = int(min(max(max_radius_km * 1000, 3000), 45000))
 
         candidates: List[Dict[str, Any]] = []
         seen_names = set()
 
-        # 1. Geoapify Attractions, Sights, and Food
+        # 1. Curated Regional Attractions (Guarantees multi-day regional diversity & zero unrelated city leakage)
+        curated_regions = get_curated_regions_for_destination(destination_name)
+        for region in curated_regions:
+            r_name = region.get("region_name", "Sightseeing District")
+            for p in region.get("pois", []):
+                name_clean = p["name"].strip().lower()
+                if name_clean not in seen_names:
+                    seen_names.add(name_clean)
+                    candidates.append({
+                        "place_id": p["id"],
+                        "name": p["name"],
+                        "category": p.get("category", "tourism"),
+                        "categories": [p.get("category", "tourism")],
+                        "latitude": p["latitude"],
+                        "longitude": p["longitude"],
+                        "address": p.get("address"),
+                        "opening_hours": p.get("opening_hours"),
+                        "description": f"{p['name']} in {r_name}",
+                        "estimated_duration_mins": p.get("visit_duration_mins", 60),
+                        "entrance_fee": p.get("entrance_fee", 0.0),
+                        "region_id": region.get("region_id"),
+                        "region_name": r_name,
+                        "rating": p.get("rating", 4.5),
+                    })
+
+        # 2. Google Places Search (if configured)
+        if google_maps_service.is_configured():
+            try:
+                g_places = await google_maps_service.search_places(
+                    query=f"tourist attractions in {destination_name}",
+                    location=(dest_lat, dest_lon),
+                    radius_meters=radius_meters,
+                )
+                for gp in g_places:
+                    name_clean = gp["name"].strip().lower()
+                    if name_clean not in seen_names:
+                        is_valid, reason = is_place_valid_for_destination(
+                            destination_name, gp["name"], gp["latitude"], gp["longitude"], gp.get("address")
+                        )
+                        if is_valid:
+                            seen_names.add(name_clean)
+                            candidates.append({
+                                "place_id": gp["place_id"],
+                                "name": gp["name"],
+                                "category": "tourist attraction",
+                                "categories": gp.get("types", ["tourism"]),
+                                "latitude": gp["latitude"],
+                                "longitude": gp["longitude"],
+                                "address": gp.get("address"),
+                                "opening_hours": None,
+                                "description": f"Popular attraction in {destination_name}",
+                                "estimated_duration_mins": None,
+                                "entrance_fee": None,
+                            })
+            except Exception as ge:
+                logger.warning(f"Google Places candidate retrieval warning: {ge}")
+
+        # 3. Geoapify Attractions, Sights, and Food
         categories = (
             "tourism.attraction,tourism.sights,entertainment.museum,heritage,"
             "catering.restaurant,catering.cafe,leisure.park"
@@ -370,24 +448,28 @@ class RecommendationService:
             for p in places:
                 name_clean = p.name.strip().lower()
                 if name_clean not in seen_names:
-                    seen_names.add(name_clean)
-                    candidates.append({
-                        "place_id": p.place_id,
-                        "name": p.name,
-                        "category": p.category,
-                        "categories": p.categories,
-                        "latitude": p.latitude,
-                        "longitude": p.longitude,
-                        "address": p.address,
-                        "opening_hours": p.opening_hours,
-                        "description": p.description,
-                        "estimated_duration_mins": None,  # Not invented
-                        "entrance_fee": None,            # Not invented
-                    })
+                    is_valid, reason = is_place_valid_for_destination(
+                        destination_name, p.name, p.latitude, p.longitude, p.address
+                    )
+                    if is_valid:
+                        seen_names.add(name_clean)
+                        candidates.append({
+                            "place_id": p.place_id,
+                            "name": p.name,
+                            "category": p.category,
+                            "categories": p.categories,
+                            "latitude": p.latitude,
+                            "longitude": p.longitude,
+                            "address": p.address,
+                            "opening_hours": p.opening_hours,
+                            "description": p.description,
+                            "estimated_duration_mins": None,
+                            "entrance_fee": None,
+                        })
         except Exception as e:
             logger.error(f"Geoapify candidate retrieval failed: {e}")
 
-        # 2. Local Database POIs enrichment
+        # 4. Local Database POIs enrichment (with strict validation)
         if db:
             db_places = (
                 db.query(Place)
@@ -398,20 +480,26 @@ class RecommendationService:
             for dp in db_places:
                 name_clean = dp.name.strip().lower()
                 if name_clean not in seen_names:
-                    seen_names.add(name_clean)
-                    candidates.append({
-                        "place_id": f"db_{dp.id}",
-                        "name": dp.name,
-                        "category": dp.category or "tourism",
-                        "categories": [dp.category] if dp.category else ["tourism"],
-                        "latitude": dp.latitude or dest_lat,
-                        "longitude": dp.longitude or dest_lon,
-                        "address": dp.address,
-                        "opening_hours": dp.opening_hours,
-                        "description": dp.description,
-                        "estimated_duration_mins": dp.estimated_visit_duration,
-                        "entrance_fee": dp.entrance_fee,
-                    })
+                    p_lat = dp.latitude or dest_lat
+                    p_lon = dp.longitude or dest_lon
+                    is_valid, _ = is_place_valid_for_destination(
+                        destination_name, dp.name, p_lat, p_lon, dp.address
+                    )
+                    if is_valid:
+                        seen_names.add(name_clean)
+                        candidates.append({
+                            "place_id": f"db_{dp.id}",
+                            "name": dp.name,
+                            "category": dp.category or "tourism",
+                            "categories": [dp.category] if dp.category else ["tourism"],
+                            "latitude": p_lat,
+                            "longitude": p_lon,
+                            "address": dp.address,
+                            "opening_hours": dp.opening_hours,
+                            "description": dp.description,
+                            "estimated_duration_mins": dp.estimated_visit_duration,
+                            "entrance_fee": dp.entrance_fee,
+                        })
 
         return candidates
 

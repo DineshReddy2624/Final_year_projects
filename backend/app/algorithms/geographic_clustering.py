@@ -194,3 +194,132 @@ def get_dbscan_suitability_explanation() -> str:
         "without projection distortions that occur with Euclidean planar metrics."
     )
 
+
+def is_religious_place(poi: Any) -> bool:
+    """Detect if a POI is a temple, mosque, church, or place of worship."""
+    name = (getattr(poi, "name", "") or (poi.get("name", "") if isinstance(poi, dict) else "")).lower()
+    cat = (getattr(poi, "category", "") or (poi.get("category", "") if isinstance(poi, dict) else "")).lower()
+    return any(w in name or w in cat for w in ["temple", "mandir", "church", "mosque", "masjid", "basilica", "cathedral", "gurdwara", "place of worship"])
+
+
+def cluster_attractions_into_daily_regions(
+    attractions: List[Any],
+    num_days: int,
+    min_per_day: int = 3,
+    max_per_day: int = 4,
+) -> List[List[Any]]:
+    """Partition destination attractions into coherent geographical regions for each sightseeing day.
+    Prevents city-wide criss-crossing by grouping spatially proximate POIs into distinct daily clusters.
+    Enforces category diversity: ensures an engaging blend of Malls, Historical Forts/Palaces,
+    Nature/Lakes, and restricts religious sites to at most 1 per day.
+    """
+    if num_days <= 0 or not attractions:
+        return [[] for _ in range(max(1, num_days))]
+
+    if num_days == 1:
+        return [attractions[:max_per_day]]
+
+    # Step 1: Check if POIs have pre-tagged region metadata (from curated catalog or description)
+    region_groups: Dict[str, List[Any]] = {}
+    untagged: List[Any] = []
+    for poi in attractions:
+        r_id = getattr(poi, "region_id", None) or (poi.get("region_id") if isinstance(poi, dict) else None)
+        if r_id:
+            region_groups.setdefault(r_id, []).append(poi)
+        else:
+            untagged.append(poi)
+
+    # If we have pre-tagged regional groups matching or exceeding num_days, allocate regions to days
+    if len(region_groups) >= num_days:
+        sorted_groups = sorted(region_groups.values(), key=len, reverse=True)
+        daily_buckets = [list(g) for g in sorted_groups[:num_days]]
+        # Distribute remaining groups and untagged POIs to geographically closest bucket
+        remaining_pois = []
+        for g in sorted_groups[num_days:]:
+            remaining_pois.extend(g)
+        remaining_pois.extend(untagged)
+    else:
+        # Step 2: Use spatial clustering (K-Means with k = num_days over geodetic coordinates)
+        coords = []
+        for p in attractions:
+            lat = getattr(p, "latitude", None) or (p.get("latitude") if isinstance(p, dict) else 0.0)
+            lon = getattr(p, "longitude", None) or (p.get("longitude") if isinstance(p, dict) else 0.0)
+            coords.append((lat, lon))
+
+        k = min(num_days, len(attractions))
+        coords_arr = np.array(coords, dtype=np.float64)
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(coords_arr).tolist()
+
+        daily_buckets = [[] for _ in range(num_days)]
+        for poi, label in zip(attractions, labels):
+            daily_buckets[label % num_days].append(poi)
+        remaining_pois = []
+
+    # Assign remaining POIs to the nearest day bucket by centroid distance
+    for poi in remaining_pois:
+        p_lat = getattr(poi, "latitude", None) or (poi.get("latitude") if isinstance(poi, dict) else 0.0)
+        p_lon = getattr(poi, "longitude", None) or (poi.get("longitude") if isinstance(poi, dict) else 0.0)
+
+        best_day = 0
+        min_dist = float("inf")
+        for d_idx, bucket in enumerate(daily_buckets):
+            if bucket:
+                c_lat = sum(getattr(b, "latitude", 0.0) or (b.get("latitude", 0.0) if isinstance(b, dict) else 0.0) for b in bucket) / len(bucket)
+                c_lon = sum(getattr(b, "longitude", 0.0) or (b.get("longitude", 0.0) if isinstance(b, dict) else 0.0) for b in bucket) / len(bucket)
+                dist = haversine_distance_km(p_lat, p_lon, c_lat, c_lon)
+                if dist < min_dist:
+                    min_dist = dist
+                    best_day = d_idx
+        daily_buckets[best_day].append(poi)
+
+    # Balance each bucket to satisfy min_per_day
+    for d in range(num_days):
+        while len(daily_buckets[d]) < min_per_day:
+            donor = max(range(num_days), key=lambda k: len(daily_buckets[k]))
+            if len(daily_buckets[donor]) > min_per_day:
+                # Borrow the POI in donor bucket closest to d's centroid
+                if daily_buckets[d]:
+                    c_lat = sum(getattr(b, "latitude", 0.0) for b in daily_buckets[d]) / len(daily_buckets[d])
+                    c_lon = sum(getattr(b, "longitude", 0.0) for b in daily_buckets[d]) / len(daily_buckets[d])
+                    best_poi_idx = min(
+                        range(len(daily_buckets[donor])),
+                        key=lambda i: haversine_distance_km(
+                            c_lat, c_lon,
+                            getattr(daily_buckets[donor][i], "latitude", 0.0),
+                            getattr(daily_buckets[donor][i], "longitude", 0.0)
+                        )
+                    )
+                    daily_buckets[d].append(daily_buckets[donor].pop(best_poi_idx))
+                else:
+                    daily_buckets[d].append(daily_buckets[donor].pop())
+            else:
+                break
+
+    # Diversity Enforcement: Strictly limit temples / religious places to at most 1 per day
+    for d in range(num_days):
+        rel_indices = [idx for idx, poi in enumerate(daily_buckets[d]) if is_religious_place(poi)]
+        if len(rel_indices) > 1:
+            # Keep first religious place; swap subsequent ones with non-religious places from other days
+            for surplus_idx in reversed(rel_indices[1:]):
+                surplus_poi = daily_buckets[d][surplus_idx]
+                swapped = False
+                for other_d in range(num_days):
+                    if other_d != d:
+                        other_rel_count = sum(1 for p in daily_buckets[other_d] if is_religious_place(p))
+                        if other_rel_count == 0:
+                            # Find a non-religious place in other_d to swap
+                            non_rel_indices = [idx for idx, p in enumerate(daily_buckets[other_d]) if not is_religious_place(p)]
+                            if non_rel_indices:
+                                swap_idx = non_rel_indices[0]
+                                candidate_swap = daily_buckets[other_d][swap_idx]
+                                daily_buckets[d][surplus_idx] = candidate_swap
+                                daily_buckets[other_d][swap_idx] = surplus_poi
+                                swapped = True
+                                break
+                if not swapped and len(daily_buckets[d]) > min_per_day:
+                    daily_buckets[d].pop(surplus_idx)
+
+    return daily_buckets
+
+

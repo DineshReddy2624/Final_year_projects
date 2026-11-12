@@ -7,7 +7,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 try:
-    from app.algorithms.geographic_clustering import haversine_distance_km
+    from app.algorithms.geographic_clustering import (
+        cluster_attractions_into_daily_regions,
+        haversine_distance_km,
+    )
     from app.algorithms.budget_calculator import calculate_itinerary_budget
     from app.algorithms.itinerary_optimizer import calculate_itinerary_utility
     from app.algorithms.itinerary_validator import (
@@ -52,7 +55,10 @@ try:
     from app.services.recommendation_service import recommendation_service
     from app.services.weather_service import weather_service
 except ImportError:
-    from backend.app.algorithms.geographic_clustering import haversine_distance_km
+    from backend.app.algorithms.geographic_clustering import (
+        cluster_attractions_into_daily_regions,
+        haversine_distance_km,
+    )
     from backend.app.algorithms.budget_calculator import calculate_itinerary_budget
     from backend.app.algorithms.itinerary_optimizer import calculate_itinerary_utility
     from backend.app.algorithms.itinerary_validator import (
@@ -755,19 +761,9 @@ class ItineraryService:
             # Days 3..(N-1): Full Day Sightseeing in Destination (at least 3 attractions per day)
             # Day N: Return Highway Transit back to Source
             dest_days_count = max(1, total_days - 2 if total_days >= 3 else 1)
-            dest_buckets: List[List[POIScheduleInput]] = [[] for _ in range(dest_days_count)]
-
-            for i, poi in enumerate(attractions):
-                dest_buckets[i % dest_days_count].append(poi)
-
-            # Ensure at least 3 attractions per destination sightseeing day
-            for d in range(dest_days_count):
-                while len(dest_buckets[d]) < 3:
-                    donor = max(range(dest_days_count), key=lambda k: len(dest_buckets[k]))
-                    if len(dest_buckets[donor]) > 3:
-                        dest_buckets[d].append(dest_buckets[donor].pop())
-                    else:
-                        break
+            dest_buckets = cluster_attractions_into_daily_regions(
+                attractions, dest_days_count, min_per_day=3, max_per_day=4
+            )
 
             for day_num in range(1, total_days + 1):
                 curr_date = start_date + timedelta(days=day_num - 1)
@@ -1349,18 +1345,9 @@ class ItineraryService:
 
         else:
             # STANDARD / INTRACITY / COMFORTABLE JOURNEY FLOW:
-            min_daily = 3
-            daily_buckets: List[List[POIScheduleInput]] = [[] for _ in range(total_days)]
-            for i, poi in enumerate(attractions):
-                daily_buckets[i % total_days].append(poi)
-
-            for d in range(total_days):
-                while len(daily_buckets[d]) < min_daily:
-                    donor = max(range(total_days), key=lambda k: len(daily_buckets[k]))
-                    if len(daily_buckets[donor]) > min_daily:
-                        daily_buckets[d].append(daily_buckets[donor].pop())
-                    else:
-                        break
+            daily_buckets = cluster_attractions_into_daily_regions(
+                attractions, total_days, min_per_day=3, max_per_day=4
+            )
 
             dest_h_lat = destination_hotel.latitude if destination_hotel else ref_lat
             dest_h_lon = destination_hotel.longitude if destination_hotel else ref_lon

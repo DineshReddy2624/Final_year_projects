@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     GEOAPIFY_API_KEY: str = "a212b99a65ea4fb986991545e1df0573"
     ORS_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+    GOOGLE_MAPS_API_KEY: str = ""
+    GOOGLE_PLACES_API_KEY: str = ""
+    GOOGLE_ROUTES_API_KEY: str = ""
     
     # External API client settings
     EXTERNAL_API_TIMEOUT_SECONDS: float = 12.0

@@ -114,6 +114,21 @@ class JourneyAssessmentResult(BaseModel):
     return_rest_stops: List[HighwayRestStop] = Field(default_factory=list)
 
 
+class HotelRelocationEvaluation(BaseModel):
+    """Evaluation of whether relocating hotels between consecutive sightseeing days improves travel efficiency."""
+    day_number: int
+    from_region: str
+    to_region: str
+    distance_between_regions_km: float
+    is_relocation_recommended: bool
+    current_hotel_name: str
+    alternative_hotel: Optional[HotelItem] = None
+    driving_time_saved_mins: float = 0.0
+    recommendation_reason: str
+    option_a_summary: str
+    option_b_summary: str
+
+
 class AccommodationSummary(BaseModel):
     """Combined accommodation evaluation across both stopovers and destination stays."""
 
@@ -127,6 +142,7 @@ class AccommodationSummary(BaseModel):
     destination_hotel: Optional[HotelItem] = None
     alternative_stopover_hotels: List[HotelItem] = Field(default_factory=list)
     alternative_destination_hotels: List[HotelItem] = Field(default_factory=list)
+    hotel_relocation_evaluations: List[HotelRelocationEvaluation] = Field(default_factory=list)
     accommodation_tier: str = "standard"
     notes: List[str] = Field(default_factory=list)
 
