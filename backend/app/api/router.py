@@ -14,6 +14,7 @@ try:
     from app.api.routes.users import router as users_router
     from app.api.routes.weather import router as weather_router
     from app.api.routes.live_trip import router as live_trip_router
+    from app.api.routes.locations import router as locations_router
 except ImportError:
     from backend.app.api.health import router as health_router
     from backend.app.api.routes.ai import router as ai_router
@@ -28,6 +29,7 @@ except ImportError:
     from backend.app.api.routes.users import router as users_router
     from backend.app.api.routes.weather import router as weather_router
     from backend.app.api.routes.live_trip import router as live_trip_router
+    from backend.app.api.routes.locations import router as locations_router
 
 api_router = APIRouter()
 
@@ -37,6 +39,9 @@ api_router.include_router(health_router)
 # Authentication & User Management
 api_router.include_router(auth_router)
 api_router.include_router(users_router)
+
+# Locations, Geocoding & Route Preview (Google Maps Style Selection)
+api_router.include_router(locations_router)
 
 # External Geospatial & Environmental Services
 api_router.include_router(destinations_router)

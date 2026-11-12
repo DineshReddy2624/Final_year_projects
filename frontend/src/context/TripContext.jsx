@@ -27,6 +27,20 @@ export const TripProvider = ({ children }) => {
         : {
             destination: 'Hyderabad',
             source: 'Hyderabad Airport (RGIA)',
+            destinationLocation: {
+              name: 'Hyderabad',
+              formatted_address: 'Hyderabad, Telangana, India',
+              latitude: 17.385044,
+              longitude: 78.486671,
+              category: 'city',
+            },
+            sourceLocation: {
+              name: 'Hyderabad Airport (RGIA)',
+              formatted_address: 'Rajiv Gandhi International Airport, Shamshabad, Hyderabad, Telangana, India',
+              latitude: 17.2403,
+              longitude: 78.4294,
+              category: 'airport',
+            },
             roundTrip: true,
             startDate: initialDates.startDate,
             endDate: initialDates.endDate,
@@ -53,6 +67,20 @@ export const TripProvider = ({ children }) => {
       return {
         destination: 'Hyderabad',
         source: 'Hyderabad Airport (RGIA)',
+        destinationLocation: {
+          name: 'Hyderabad',
+          formatted_address: 'Hyderabad, Telangana, India',
+          latitude: 17.385044,
+          longitude: 78.486671,
+          category: 'city',
+        },
+        sourceLocation: {
+          name: 'Hyderabad Airport (RGIA)',
+          formatted_address: 'Rajiv Gandhi International Airport, Shamshabad, Hyderabad, Telangana, India',
+          latitude: 17.2403,
+          longitude: 78.4294,
+          category: 'airport',
+        },
         roundTrip: true,
         startDate: initialDates.startDate,
         endDate: initialDates.endDate,
@@ -196,11 +224,29 @@ export const TripProvider = ({ children }) => {
     });
   };
 
+  const swapLocations = () => {
+    setTripPlan((prev) => {
+      const nextSource = prev.destination;
+      const nextDest = prev.source;
+      const nextSourceLoc = prev.destinationLocation;
+      const nextDestLoc = prev.sourceLocation;
+
+      return {
+        ...prev,
+        source: nextSource,
+        destination: nextDest,
+        sourceLocation: nextSourceLoc,
+        destinationLocation: nextDestLoc,
+      };
+    });
+  };
+
   return (
     <TripContext.Provider
       value={{
         tripPlan,
         updatePlan,
+        swapLocations,
         recommendations,
         setRecommendations,
         selectedAttractions,

@@ -63,7 +63,10 @@ class ItineraryGenerateRequest(BaseModel):
         description="Daily starting time in 24-hour HH:MM format",
     )
     start_location: Optional[POIScheduleInput] = Field(
-        default=None, description="Optional hotel or starting location"
+        default=None, description="Optional hotel or starting location with verified coordinates"
+    )
+    destination_location: Optional[POIScheduleInput] = Field(
+        default=None, description="Optional destination hub or hotel with verified coordinates"
     )
     end_location: Optional[POIScheduleInput] = Field(
         default=None, description="Optional hotel or ending location"

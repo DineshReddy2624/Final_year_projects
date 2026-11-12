@@ -394,11 +394,18 @@ class ItineraryService:
 
         # 4. Resolve Effective Source (Origin Hub) and Intercity Journey Evaluation
         effective_source: Optional[POIScheduleInput] = None
-        clean_source = request.source.strip() if request.source else None
 
-        if clean_source:
-            s_lat = ref_lat
-            s_lon = ref_lon
+        # Priority 1: Explicit structured start_location with valid coordinates (from Google Maps picker)
+        if (
+            request.start_location
+            and request.start_location.latitude is not None
+            and request.start_location.longitude is not None
+        ):
+            effective_source = request.start_location
+        elif request.source and request.source.strip():
+            clean_source = request.source.strip()
+            s_lat = None
+            s_lon = None
             s_addr = clean_source
             try:
                 dest_items, _ = await geoapify_service.search_destinations(clean_source, limit=1)
@@ -412,19 +419,30 @@ class ItineraryService:
             except Exception as ge:
                 logger.warning(f"Could not geocode source '{clean_source}': {ge}")
 
-            effective_source = POIScheduleInput(
-                id="source_origin",
-                name=clean_source,
-                latitude=s_lat,
-                longitude=s_lon,
-                category="Origin Hub",
-                address=s_addr,
-                visit_duration_mins=0,
-                entrance_fee=0.0,
-                is_fee_verified=True,
-            )
-        elif request.start_location:
-            effective_source = request.start_location
+            if s_lat is not None and s_lon is not None:
+                effective_source = POIScheduleInput(
+                    id="source_origin",
+                    name=clean_source,
+                    latitude=s_lat,
+                    longitude=s_lon,
+                    category="Origin Hub",
+                    address=s_addr,
+                    visit_duration_mins=0,
+                    entrance_fee=0.0,
+                    is_fee_verified=True,
+                )
+            else:
+                logger.error(
+                    f"Geocoding failed for starting location '{clean_source}'. "
+                    f"Rejecting silent fallback to destination coordinates ({ref_lat}, {ref_lon})."
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Could not locate starting location '{clean_source}'. "
+                        f"Please select a location from autocomplete suggestions or pick on the map."
+                    ),
+                )
 
         # Resolve Return Location if round_trip (starts and finishes at source)
         effective_return: Optional[POIScheduleInput] = None

@@ -31,17 +31,20 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    const detail = error.response?.data?.detail;
+    const rawErrors = error.response?.data?.detail || error.response?.data?.details;
     let message = 'An unexpected server error occurred';
 
-    if (typeof detail === 'string') {
-      message = detail;
-    } else if (Array.isArray(detail)) {
-      message = detail
+    if (typeof rawErrors === 'string') {
+      message = rawErrors;
+    } else if (Array.isArray(rawErrors) && rawErrors.length > 0) {
+      message = rawErrors
         .map((d) => {
-          const loc = Array.isArray(d.loc) ? d.loc.filter((x) => x !== 'body').join('.') : '';
+          const loc = Array.isArray(d.loc)
+            ? d.loc.filter((x) => x !== 'body').join('.')
+            : typeof d.loc === 'string' ? d.loc : '';
           const msg = d.msg || d.message || JSON.stringify(d);
-          return loc ? `${loc}: ${msg}` : msg;
+          const fieldName = loc ? loc.replace(/_/g, ' ') : '';
+          return fieldName ? `${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}: ${msg}` : msg;
         })
         .join(', ');
     } else if (error.response?.data?.message) {

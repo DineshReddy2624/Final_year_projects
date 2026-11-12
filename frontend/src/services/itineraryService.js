@@ -24,6 +24,8 @@ export const itineraryService = {
     preferredStopoverTown = null,
     selectedStopoverHotelId = null,
     selectedDestinationHotelId = null,
+    startLocation = null,
+    destinationLocation = null,
   }) {
     const payload = {
       destination,
@@ -48,6 +50,34 @@ export const itineraryService = {
       selected_stopover_hotel_id: selectedStopoverHotelId || null,
       selected_destination_hotel_id: selectedDestinationHotelId || null,
     };
+
+    if (startLocation && startLocation.latitude && startLocation.longitude) {
+      payload.start_location = {
+        id: startLocation.place_id || 'source_origin',
+        name: startLocation.name,
+        latitude: parseFloat(startLocation.latitude),
+        longitude: parseFloat(startLocation.longitude),
+        category: startLocation.category || 'Origin Hub',
+        address: startLocation.formatted_address || startLocation.name,
+        visit_duration_mins: 0,
+        entrance_fee: 0.0,
+        is_fee_verified: true,
+      };
+    }
+
+    if (destinationLocation && destinationLocation.latitude && destinationLocation.longitude) {
+      payload.destination_location = {
+        id: destinationLocation.place_id || 'dest_hub',
+        name: destinationLocation.name,
+        latitude: parseFloat(destinationLocation.latitude),
+        longitude: parseFloat(destinationLocation.longitude),
+        category: destinationLocation.category || 'Destination Hub',
+        address: destinationLocation.formatted_address || destinationLocation.name,
+        visit_duration_mins: 0,
+        entrance_fee: 0.0,
+        is_fee_verified: true,
+      };
+    }
 
     if (selectedAttractions && selectedAttractions.length > 0) {
       payload.selected_attractions = selectedAttractions.map((attr) => ({

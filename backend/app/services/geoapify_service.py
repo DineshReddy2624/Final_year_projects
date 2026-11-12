@@ -6,11 +6,13 @@ try:
     from app.core.config import settings
     from app.core.logger import logger
     from app.schemas.external import DestinationItem, PlaceItem
+    from app.schemas.location import LocationItem
     from app.utils.cache import api_cache, execute_with_retry
 except ImportError:
     from backend.app.core.config import settings
     from backend.app.core.logger import logger
     from backend.app.schemas.external import DestinationItem, PlaceItem
+    from backend.app.schemas.location import LocationItem
     from backend.app.utils.cache import api_cache, execute_with_retry
 
 
@@ -18,6 +20,8 @@ class GeoapifyService:
     """Service wrapping Geoapify REST APIs for geocoding, attraction search, and place details."""
 
     BASE_URL_GEOCODE = "https://api.geoapify.com/v1/geocode/search"
+    BASE_URL_AUTOCOMPLETE = "https://api.geoapify.com/v1/geocode/autocomplete"
+    BASE_URL_REVERSE = "https://api.geoapify.com/v1/geocode/reverse"
     BASE_URL_PLACES = "https://api.geoapify.com/v2/places"
     BASE_URL_PLACE_DETAILS = "https://api.geoapify.com/v2/place-details"
 
@@ -119,6 +123,194 @@ class GeoapifyService:
 
         api_cache.set(cache_key, destinations, ttl=settings.CACHE_DEFAULT_TTL_SECONDS)
         return destinations, "live"
+
+    @staticmethod
+    def _categorize_result(item: Dict[str, Any]) -> str:
+        cat_raw = (item.get("category") or "").lower()
+        res_type = (item.get("result_type") or "").lower()
+        name_lower = (item.get("name") or "").lower()
+        formatted_lower = (item.get("formatted") or "").lower()
+
+        if "airport" in cat_raw or "airport" in name_lower or "aerodrome" in cat_raw:
+            return "airport"
+        if "railway" in cat_raw or "station" in cat_raw or "train" in name_lower or "station" in name_lower:
+            return "station"
+        if "hotel" in cat_raw or "accommodation" in cat_raw or "resort" in name_lower or "hotel" in name_lower:
+            return "hotel"
+        if "tourism" in cat_raw or "attraction" in cat_raw or "monument" in cat_raw or "museum" in cat_raw:
+            return "attraction"
+        if res_type in {"city", "administrative"} or "city" in cat_raw or "populated_place" in cat_raw:
+            return "city"
+        return "general"
+
+    async def autocomplete(
+        self,
+        query: str,
+        limit: int = 6,
+    ) -> Tuple[List[LocationItem], str]:
+        """Fetch live debounced autocomplete suggestions for location search."""
+        clean_query = query.strip()
+        if not clean_query:
+            return [], "empty"
+
+        cache_key = f"geoapify:autocomplete:{clean_query.lower()}:{limit}"
+        cached = api_cache.get(cache_key)
+        if cached is not None:
+            return cached, "cached"
+
+        if not self.api_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Geoapify API key is not configured in GEOAPIFY_API_KEY",
+            )
+
+        params = {
+            "text": clean_query,
+            "limit": limit,
+            "apiKey": self.api_key,
+            "format": "json",
+        }
+
+        async def _call():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                res = await client.get(self.BASE_URL_AUTOCOMPLETE, params=params)
+                if res.status_code == 401:
+                    logger.error("Geoapify API key is invalid or unauthorized")
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="Geoapify authentication failed. Invalid API key.",
+                    )
+                if res.status_code == 429:
+                    logger.warning("Geoapify rate limit reached")
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail="Geoapify rate limit reached. Please try again shortly.",
+                    )
+                res.raise_for_status()
+                return res.json()
+
+        try:
+            data = await execute_with_retry(_call, operation_name=f"Autocomplete '{clean_query}'")
+        except Exception as e:
+            logger.warning(f"Autocomplete error for '{clean_query}': {e}. Falling back to search_destinations.")
+            dest_items, src = await self.search_destinations(clean_query, limit=limit)
+            fallback_locations = [
+                LocationItem(
+                    place_id=d.place_id or f"{d.latitude:.5f},{d.longitude:.5f}",
+                    name=d.name,
+                    formatted_address=d.formatted,
+                    city=d.city,
+                    state=d.state,
+                    country=d.country,
+                    country_code=d.country_code,
+                    latitude=d.latitude,
+                    longitude=d.longitude,
+                    category="city" if d.city else "general",
+                    result_type="city",
+                )
+                for d in dest_items
+            ]
+            api_cache.set(cache_key, fallback_locations, ttl=settings.CACHE_DEFAULT_TTL_SECONDS)
+            return fallback_locations, src
+
+        results: List[LocationItem] = []
+        raw_items = data.get("results", [])
+        for item in raw_items:
+            lat = item.get("lat")
+            lon = item.get("lon")
+            if lat is None or lon is None:
+                continue
+
+            name = item.get("name") or item.get("city") or item.get("formatted", clean_query).split(",")[0]
+            formatted = item.get("formatted") or f"{name}, India"
+            cat = self._categorize_result(item)
+
+            results.append(
+                LocationItem(
+                    place_id=item.get("place_id") or f"{float(lat):.5f},{float(lon):.5f}",
+                    name=name,
+                    formatted_address=formatted,
+                    city=item.get("city"),
+                    state=item.get("state"),
+                    country=item.get("country"),
+                    country_code=item.get("country_code"),
+                    latitude=float(lat),
+                    longitude=float(lon),
+                    category=cat,
+                    result_type=item.get("result_type"),
+                )
+            )
+
+        api_cache.set(cache_key, results, ttl=settings.CACHE_DEFAULT_TTL_SECONDS)
+        return results, "live"
+
+    async def reverse_geocode(
+        self,
+        latitude: float,
+        longitude: float,
+    ) -> Tuple[LocationItem, str]:
+        """Convert latitude and longitude coordinates into a human-readable address."""
+        self.validate_coordinates(latitude, longitude)
+        cache_key = f"geoapify:reverse:{latitude:.5f}:{longitude:.5f}"
+        cached = api_cache.get(cache_key)
+        if cached is not None:
+            return cached, "cached"
+
+        if not self.api_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Geoapify API key is not configured in GEOAPIFY_API_KEY",
+            )
+
+        params = {
+            "lat": latitude,
+            "lon": longitude,
+            "apiKey": self.api_key,
+            "format": "json",
+        }
+
+        async def _call():
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                res = await client.get(self.BASE_URL_REVERSE, params=params)
+                res.raise_for_status()
+                return res.json()
+
+        data = await execute_with_retry(
+            _call, operation_name=f"Reverse geocode ({latitude}, {longitude})"
+        )
+        raw_results = data.get("results", [])
+        if not raw_results:
+            loc = LocationItem(
+                place_id=f"{latitude:.5f},{longitude:.5f}",
+                name=f"Location ({latitude:.4f}, {longitude:.4f})",
+                formatted_address=f"Coordinates {latitude:.5f}, {longitude:.5f}",
+                latitude=latitude,
+                longitude=longitude,
+                category="general",
+                result_type="coordinate",
+            )
+            return loc, "fallback"
+
+        item = raw_results[0]
+        name = item.get("name") or item.get("street") or item.get("city") or f"Location ({latitude:.4f}, {longitude:.4f})"
+        formatted = item.get("formatted") or f"{name}, {latitude:.4f}, {longitude:.4f}"
+        cat = self._categorize_result(item)
+
+        loc = LocationItem(
+            place_id=item.get("place_id") or f"{latitude:.5f},{longitude:.5f}",
+            name=name,
+            formatted_address=formatted,
+            city=item.get("city"),
+            state=item.get("state"),
+            country=item.get("country"),
+            country_code=item.get("country_code"),
+            latitude=float(item.get("lat", latitude)),
+            longitude=float(item.get("lon", longitude)),
+            category=cat,
+            result_type=item.get("result_type"),
+        )
+        api_cache.set(cache_key, loc, ttl=settings.CACHE_DEFAULT_TTL_SECONDS)
+        return loc, "live"
 
     def normalize_place(self, feature: Dict[str, Any]) -> Optional[PlaceItem]:
         """Convert a Geoapify GeoJSON feature into a normalized PlaceItem."""

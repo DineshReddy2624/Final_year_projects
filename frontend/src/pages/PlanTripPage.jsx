@@ -23,6 +23,7 @@ import {
   Bed,
   Coffee,
   ShieldAlert,
+  ArrowUpDown,
 } from 'lucide-react';
 import { useTrip } from '../context/TripContext';
 import recommendationService from '../services/recommendationService';
@@ -30,6 +31,9 @@ import itineraryService from '../services/itineraryService';
 import aiService from '../services/aiService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
+import LocationSearchInput from '../components/LocationSearchInput';
+import MapLocationPickerModal from '../components/MapLocationPickerModal';
+import RoutePreviewCard from '../components/RoutePreviewCard';
 import { formatCurrency } from '../utils/formatters';
 
 const POPULAR_DESTINATIONS = ['Hyderabad', 'Bengaluru', 'Jaipur', 'Goa', 'Delhi', 'Mumbai'];
@@ -94,6 +98,29 @@ export default function PlanTripPage() {
   // Form states
   const [destination, setDestination] = useState(tripPlan.destination || 'Hyderabad');
   const [source, setSource] = useState(tripPlan.source || 'Hyderabad Airport (RGIA)');
+  const [sourceLocation, setSourceLocation] = useState(
+    tripPlan.sourceLocation || {
+      name: tripPlan.source || 'Hyderabad Airport (RGIA)',
+      formatted_address: 'Rajiv Gandhi International Airport, Shamshabad, Hyderabad, Telangana, India',
+      latitude: 17.2403,
+      longitude: 78.4294,
+      category: 'airport',
+    }
+  );
+  const [destinationLocation, setDestinationLocation] = useState(
+    tripPlan.destinationLocation || {
+      name: tripPlan.destination || 'Hyderabad',
+      formatted_address: 'Hyderabad, Telangana, India',
+      latitude: 17.385044,
+      longitude: 78.486671,
+      category: 'city',
+    }
+  );
+
+  // Map Picker Modal state
+  const [mapModalOpen, setMapModalOpen] = useState(false);
+  const [mapModalTarget, setMapModalTarget] = useState('source'); // 'source' or 'destination'
+
   const [roundTrip, setRoundTrip] = useState(tripPlan.roundTrip !== undefined ? tripPlan.roundTrip : true);
   const [startDate, setStartDate] = useState(tripPlan.startDate);
   const [endDate, setEndDate] = useState(tripPlan.endDate);
@@ -106,6 +133,33 @@ export default function PlanTripPage() {
   const [pace, setPace] = useState(tripPlan.pace || 'relaxed');
   const [dailyHours, setDailyHours] = useState(tripPlan.dailyAvailableHours || 8.0);
   const [interests, setInterests] = useState(tripPlan.interests || ['Historical Places', 'Food', 'Culture']);
+
+  const handleSwapLocations = () => {
+    const prevSource = source;
+    const prevDest = destination;
+    const prevSourceLoc = sourceLocation;
+    const prevDestLoc = destinationLocation;
+
+    setSource(prevDest);
+    setDestination(prevSource);
+    setSourceLocation(prevDestLoc);
+    setDestinationLocation(prevSourceLoc);
+  };
+
+  const handleOpenMapPicker = (target) => {
+    setMapModalTarget(target);
+    setMapModalOpen(true);
+  };
+
+  const handleModalConfirmLocation = (loc) => {
+    if (mapModalTarget === 'destination') {
+      setDestination(loc.name);
+      setDestinationLocation(loc);
+    } else {
+      setSource(loc.name);
+      setSourceLocation(loc);
+    }
+  };
 
   // Accommodation & Long-Distance Stopover States (Phase 6)
   const [accommodationType, setAccommodationType] = useState(tripPlan.accommodationType || 'standard');
@@ -193,6 +247,8 @@ export default function PlanTripPage() {
     updatePlan({
       destination,
       source,
+      sourceLocation,
+      destinationLocation,
       roundTrip,
       fuelType,
       mileageKmpl,
@@ -257,6 +313,8 @@ export default function PlanTripPage() {
       const itin = await itineraryService.generateItinerary({
         destination,
         source,
+        startLocation: sourceLocation,
+        destinationLocation: destinationLocation,
         roundTrip,
         startDate,
         endDate,
@@ -337,7 +395,21 @@ export default function PlanTripPage() {
                   const q = 'Plan a relaxed 5-day road trip from Rajampet, Y.S.R. Kadapa, Andhra Pradesh to Hyderabad for 2 travelers with ₹50,000 budget by car.';
                   setNlQuery(q);
                   setDestination('Hyderabad');
+                  setDestinationLocation({
+                    name: 'Hyderabad',
+                    formatted_address: 'Hyderabad, Telangana, India',
+                    latitude: 17.385044,
+                    longitude: 78.486671,
+                    category: 'city',
+                  });
                   setSource('Rajampet, Y.S.R. Kadapa, Andhra Pradesh');
+                  setSourceLocation({
+                    name: 'Rajampet',
+                    formatted_address: 'Rajampet, Y.S.R. Kadapa, Andhra Pradesh, India',
+                    latitude: 14.239177,
+                    longitude: 79.175167,
+                    category: 'city',
+                  });
                   setTravelersCount(2);
                   setBudget(50000);
                   setTransportation('driving-car');
@@ -417,55 +489,23 @@ export default function PlanTripPage() {
 
       {/* --- Structured Form Card --- */}
       <div className="p-8 sm:p-10 rounded-3xl bg-white border border-[#DCE6E3] shadow-soft-lg space-y-8">
-        {/* Section 1: Destination Selection */}
-        <div className="space-y-3">
-          <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center">
-            <MapPin className="w-3.5 h-3.5 mr-1.5 text-[#18B8A6]" />
-            1. Target Destination City
-          </label>
-          <div className="space-y-2">
-            <input
-              type="text"
-              required
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="e.g. Hyderabad, Bengaluru, Jaipur"
-              className="w-full px-4 py-3 rounded-xl bg-[#F4F7F6] border border-[#DCE6E3] focus:border-[#18B8A6] focus:bg-white text-sm text-[#26383D] placeholder-[#829196] focus:outline-none transition-all"
-            />
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] text-[#829196] mr-1 font-medium">Popular hubs:</span>
-              {POPULAR_DESTINATIONS.map((dest) => (
-                <button
-                  key={dest}
-                  type="button"
-                  onClick={() => {
-                    setDestination(dest);
-                    const cityOrigins = POPULAR_ORIGINS[dest.toLowerCase()];
-                    if (cityOrigins && cityOrigins.length > 0) {
-                      setSource(cityOrigins[0]);
-                    }
-                  }}
-                  className={`text-xs px-3 py-1 rounded-xl border transition-all ${
-                    destination.toLowerCase() === dest.toLowerCase()
-                      ? 'bg-[#18B8A6] text-white border-[#18B8A6] font-bold shadow-soft'
-                      : 'bg-[#F4F7F6] text-[#52636A] border-[#DCE6E3] hover:bg-[#EEF3F1] hover:text-[#163B46]'
-                  }`}
-                >
-                  {dest}
-                </button>
-              ))}
+        {/* =============================================================== */}
+        {/* SECTION 1 & 2: GOOGLE MAPS STYLE SOURCE & DESTINATION SELECTION */}
+        {/* =============================================================== */}
+        <div className="p-6 sm:p-7 rounded-3xl bg-[#F4F7F6]/90 border border-[#DCE6E3] space-y-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#DCE6E3]/70 pb-3">
+            <div>
+              <h3 className="text-sm font-extrabold text-[#163B46] uppercase tracking-wider flex items-center">
+                <Compass className="w-4 h-4 mr-2 text-[#18B8A6]" />
+                1 & 2. Trip Route & Location Selection
+              </h3>
+              <p className="text-[11px] text-[#52636A]">
+                Search address, city, landmark, airport, or station. Both points can be searched or selected directly on the interactive map.
+              </p>
             </div>
-          </div>
-        </div>
 
-        {/* Section 2: Origin Source Location & Round-Trip Circuit */}
-        <div className="p-5 rounded-2xl bg-[#F4F7F6] border border-[#DCE6E3] space-y-3.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <label className="text-xs font-bold text-[#163B46] uppercase tracking-wider flex items-center">
-              <Navigation className="w-3.5 h-3.5 mr-1.5 text-[#18B8A6]" />
-              2. Trip Starting Location / Source (Origin Hub)
-            </label>
-            <label className="inline-flex items-center space-x-2 text-xs font-semibold text-[#163B46] cursor-pointer">
+            {/* Round-Trip Circuit Toggle */}
+            <label className="inline-flex items-center space-x-2 text-xs font-semibold text-[#163B46] cursor-pointer shrink-0">
               <input
                 type="checkbox"
                 checked={roundTrip}
@@ -474,38 +514,66 @@ export default function PlanTripPage() {
               />
               <span className="flex items-center space-x-1">
                 <RotateCcw className="w-3.5 h-3.5 text-[#18B8A6]" />
-                <span>Round-Trip Circuit (Return to Source)</span>
+                <span>Round-Trip (Return to Origin)</span>
               </span>
             </label>
           </div>
 
-          <div className="space-y-2">
-            <input
-              type="text"
-              required
+          {/* Location Search Inputs Row with Swap Button */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr,auto,1fr] items-start gap-3 relative">
+            {/* Source Location (Starting Point) */}
+            <LocationSearchInput
+              label="Starting Point / From"
+              placeholder="Search starting location, address, city, station, or airport..."
               value={source}
-              onChange={(e) => setSource(e.target.value)}
-              placeholder="e.g. Hyderabad Airport (RGIA), Banjara Hills, Hotel, or Station"
-              className="w-full px-4 py-2.5 rounded-xl bg-white border border-[#DCE6E3] focus:border-[#18B8A6] text-sm text-[#26383D] placeholder-[#829196] focus:outline-none transition-all shadow-xs"
+              selectedLocation={sourceLocation}
+              onChangeText={(txt) => setSource(txt)}
+              onSelectLocation={(loc) => {
+                setSourceLocation(loc);
+                if (loc?.name) setSource(loc.name);
+              }}
+              onOpenMapPicker={() => handleOpenMapPicker('source')}
+              isDestination={false}
+              quickPicks={POPULAR_ORIGINS[destination.toLowerCase()] || POPULAR_ORIGINS.hyderabad}
+              required={true}
             />
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              <span className="text-[11px] text-[#829196] mr-1 font-medium">Quick hubs:</span>
-              {(POPULAR_ORIGINS[destination.toLowerCase()] || POPULAR_ORIGINS.hyderabad).map((hub) => (
-                <button
-                  key={hub}
-                  type="button"
-                  onClick={() => setSource(hub)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
-                    source.toLowerCase() === hub.toLowerCase()
-                      ? 'bg-[#163B46] text-white border-[#163B46] font-bold shadow-xs'
-                      : 'bg-white text-[#52636A] border-[#DCE6E3] hover:bg-[#EEF3F1] hover:text-[#163B46]'
-                  }`}
-                >
-                  {hub}
-                </button>
-              ))}
+
+            {/* Location Swap Button */}
+            <div className="flex items-center justify-center pt-2 sm:pt-6 lg:pt-7">
+              <button
+                type="button"
+                onClick={handleSwapLocations}
+                title="Swap Starting Point & Destination"
+                className="w-10 h-10 rounded-2xl bg-white border border-[#DCE6E3] hover:border-[#18B8A6] hover:bg-[#EEF3F1] text-[#163B46] shadow-soft flex items-center justify-center transition-all hover:scale-105 active:rotate-180 duration-200"
+              >
+                <ArrowUpDown className="w-4 h-4 text-[#18B8A6]" />
+              </button>
             </div>
+
+            {/* Destination Location (Target Point) */}
+            <LocationSearchInput
+              label="Destination / To"
+              placeholder="Search destination city, attraction, address, or landmark..."
+              value={destination}
+              selectedLocation={destinationLocation}
+              onChangeText={(txt) => setDestination(txt)}
+              onSelectLocation={(loc) => {
+                setDestinationLocation(loc);
+                if (loc?.name) setDestination(loc.name);
+              }}
+              onOpenMapPicker={() => handleOpenMapPicker('destination')}
+              isDestination={true}
+              quickPicks={POPULAR_DESTINATIONS}
+              required={true}
+            />
           </div>
+
+          {/* Interactive Road Route Preview Card */}
+          <RoutePreviewCard
+            sourceLocation={sourceLocation}
+            destinationLocation={destinationLocation}
+            transportation={transportation}
+          />
         </div>
 
         {/* Section 3: Dates & Duration */}
@@ -878,6 +946,15 @@ export default function PlanTripPage() {
           </button>
         </div>
       </div>
+
+      {/* Interactive Map Picker Modal */}
+      <MapLocationPickerModal
+        isOpen={mapModalOpen}
+        onClose={() => setMapModalOpen(false)}
+        targetField={mapModalTarget}
+        initialLocation={mapModalTarget === 'destination' ? destinationLocation : sourceLocation}
+        onConfirmLocation={handleModalConfirmLocation}
+      />
     </div>
   );
 }
