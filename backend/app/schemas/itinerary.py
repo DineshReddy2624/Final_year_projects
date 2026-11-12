@@ -157,12 +157,19 @@ class ItineraryGenerateRequest(BaseModel):
 class MealBreak(BaseModel):
     """Scheduled dining or rest break."""
 
+    id: Optional[Union[int, str]] = None
     meal_type: str = Field(..., description="lunch, dinner, or coffee_break")
     name: str = Field(..., description="Description or suggested venue")
     scheduled_start: str = Field(..., description="Start time HH:MM")
     scheduled_end: str = Field(..., description="End time HH:MM")
     duration_mins: int = Field(default=60, description="Duration in minutes")
     estimated_cost_per_person: float = Field(default=0.0, description="Estimated dining cost per traveler")
+    estimated_cost: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address: Optional[str] = None
+    cuisine: Optional[str] = None
+    google_maps_url: Optional[str] = None
 
 
 class ItineraryStop(BaseModel):

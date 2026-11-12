@@ -27,6 +27,7 @@ import {
   Bed,
   ShieldAlert,
   ExternalLink,
+  X,
 } from 'lucide-react';
 import { useTrip } from '../context/TripContext';
 import itineraryService from '../services/itineraryService';
@@ -34,6 +35,7 @@ import pdfExportService from '../services/pdfExportService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import AttractionImage from '../components/AttractionImage';
+import MapComponent from '../components/MapComponent';
 import {
   formatCurrency,
   formatDurationMins,
@@ -57,6 +59,9 @@ export default function ItineraryPage() {
   const [activeDayTab, setActiveDayTab] = useState(1);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState(null);
+  const [selectedRestaurant, setSelectedRestaurant] = useState(null);
+  const [showMapSection, setShowMapSection] = useState(true);
+  const [activeVehicleMode, setActiveVehicleMode] = useState(tripPlan?.transportation || 'driving-car');
 
   // Auto-generate if not loaded
   useEffect(() => {
@@ -772,6 +777,54 @@ export default function ItineraryPage() {
         </div>
       )}
 
+      {/* --- Road Trip Route & Live Interactive Map (Vehicle Selection) --- */}
+      <div className="rounded-3xl bg-white border border-[#DCE6E3] shadow-soft p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center space-x-2">
+              <Route className="w-5 h-5 text-[#18B8A6]" />
+              <h2 className="text-xl font-bold text-[#163B46]">Road Trip Route & Live Navigation Map</h2>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200">
+                Vehicle Routing Enabled
+              </span>
+            </div>
+            <p className="text-xs text-[#52636A] mt-1">
+              Select vehicle modes (🚗 Car, 🏍️ Bike, 🚶 Walk) on the map to inspect best road route polylines, rest stops, hotels, and restaurant stops.
+            </p>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setShowMapSection(!showMapSection)}
+              className="px-3 py-1.5 rounded-xl border border-[#DCE6E3] bg-[#F4F7F6] text-xs font-bold text-[#26383D] hover:bg-[#EEF3F1] transition-colors"
+            >
+              {showMapSection ? 'Minimize Map' : 'Show Road Trip Map'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/map')}
+              className="px-3.5 py-1.5 rounded-xl bg-[#18B8A6] hover:bg-[#129889] text-white text-xs font-bold shadow-soft flex items-center space-x-1 transition-all"
+            >
+              <span>Full Screen Map</span>
+              <ExternalLink className="w-3.5 h-3.5 ml-1" />
+            </button>
+          </div>
+        </div>
+
+        {showMapSection && (
+          <MapComponent
+            itinerary={itin}
+            height="500px"
+            selectedDay={activeDayTab}
+            onDayChange={(d) => setActiveDayTab(d === 'all' ? 1 : parseInt(d, 10))}
+            initialVehicle={activeVehicleMode}
+            onVehicleChange={setActiveVehicleMode}
+            showVehicleSelector={true}
+          />
+        )}
+      </div>
+
       {/* --- Day Selector Tabs --- */}
       {itin.days && itin.days.length > 1 && (
         <div className="flex items-center space-x-2.5 overflow-x-auto pb-1 scrollbar-none">
@@ -1119,25 +1172,74 @@ export default function ItineraryPage() {
                     const shouldRenderMeal =
                       visibleIndex === 1 || (visibleStops.length === 1 && visibleIndex === 0);
                     if (shouldRenderMeal) {
+                      const gmapsUrl =
+                        meal.google_maps_url ||
+                        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          meal.name + (meal.address ? `, ${meal.address}` : `, ${itin.destination}`)
+                        )}`;
+
                       return (
                         <div
                           key={`meal-${meal.id || mIdx}`}
-                          className="my-4 p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 text-[#163B46] flex items-center justify-between text-xs shadow-sm"
+                          className="my-4 p-4 rounded-2xl bg-gradient-to-r from-emerald-50/90 to-teal-50/60 border border-emerald-200 text-[#163B46] shadow-soft hover:shadow-soft-md transition-all group"
                         >
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-[#16A36A] font-bold shrink-0">
-                              <Utensils className="w-4 h-4" />
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-start space-x-3">
+                              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-[#16A36A] font-bold shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                                <Utensils className="w-5 h-5" />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    🍽️ {meal.meal_type ? capitalizeWords(meal.meal_type) : 'Dining Break'}
+                                  </span>
+                                  {meal.cuisine && (
+                                    <span className="text-[10px] font-semibold text-[#52636A] hidden sm:inline">
+                                      • {meal.cuisine}
+                                    </span>
+                                  )}
+                                </div>
+                                <h5 className="font-extrabold text-sm text-[#163B46] group-hover:text-emerald-700 transition-colors">
+                                  {meal.name}
+                                </h5>
+                                {meal.address && (
+                                  <p className="text-[11px] text-[#52636A] flex items-center">
+                                    <MapPin className="w-3 h-3 mr-1 text-emerald-600 shrink-0" />
+                                    <span>{meal.address}</span>
+                                  </p>
+                                )}
+                                <p className="text-[11px] text-[#52636A]">
+                                  ⏰ Scheduled {meal.scheduled_start} — {meal.scheduled_end} ({meal.duration_mins} mins)
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h5 className="font-bold text-[#163B46]">🍽️ Dining: {meal.name}</h5>
-                              <p className="text-[11px] text-[#52636A]">
-                                Scheduled {meal.scheduled_start} — {meal.scheduled_end} ({meal.duration_mins} mins)
-                              </p>
+
+                            <div className="flex items-center space-x-3 self-end sm:self-center">
+                              <div className="text-right mr-2">
+                                <span className="text-[10px] text-[#829196] block uppercase tracking-wider">Est. Cost:</span>
+                                <span className="font-extrabold text-sm text-[#16A36A]">
+                                  {formatCurrency(meal.estimated_cost || (meal.estimated_cost_per_person * (itin.travelers_count || 1)) || 0)}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRestaurant(meal)}
+                                className="px-3 py-1.5 rounded-xl bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-50 text-xs font-bold shadow-xs transition-colors"
+                              >
+                                Details
+                              </button>
+                              <a
+                                href={gmapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3.5 py-1.5 rounded-xl bg-[#16A36A] hover:bg-[#128254] text-white text-xs font-bold shadow-soft flex items-center space-x-1.5 transition-all"
+                                title="Open this restaurant's details only in Google Maps"
+                              >
+                                <span>Google Maps</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
                             </div>
                           </div>
-                          <span className="font-bold text-[#16A36A]">
-                            {formatCurrency(meal.estimated_cost || 0)}
-                          </span>
                         </div>
                       );
                     }
@@ -1146,6 +1248,94 @@ export default function ItineraryPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Restaurant Details Modal */}
+      {selectedRestaurant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#DCE6E3] space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-[#DCE6E3] pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-[#16A36A]">
+                  <Utensils className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                    {selectedRestaurant.meal_type || 'Dining'} Break Details
+                  </span>
+                  <h3 className="text-base font-extrabold text-[#163B46]">{selectedRestaurant.name}</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedRestaurant(null)}
+                className="p-1.5 rounded-full hover:bg-[#EEF3F1] text-[#52636A] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-[#26383D]">
+              {selectedRestaurant.cuisine && (
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider font-semibold">Cuisine & Specialties:</span>
+                  <span className="font-bold text-[#163B46] text-sm">{selectedRestaurant.cuisine}</span>
+                </div>
+              )}
+
+              {selectedRestaurant.address && (
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider font-semibold">Location / Address:</span>
+                  <span className="text-[#52636A]">{selectedRestaurant.address}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 p-3 rounded-2xl bg-[#F4F7F6] border border-[#DCE6E3]">
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider">Scheduled Window:</span>
+                  <span className="font-bold text-[#163B46]">
+                    {selectedRestaurant.scheduled_start} — {selectedRestaurant.scheduled_end} ({selectedRestaurant.duration_mins} mins)
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-[#829196] block uppercase tracking-wider">Estimated Budget:</span>
+                  <span className="font-black text-[#16A36A] text-sm">
+                    {formatCurrency(
+                      selectedRestaurant.estimated_cost ||
+                        (selectedRestaurant.estimated_cost_per_person * (itin.travelers_count || 1)) ||
+                        0
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-[#DCE6E3] flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedRestaurant(null)}
+                className="px-4 py-2.5 rounded-xl border border-[#DCE6E3] text-xs font-bold text-[#52636A] hover:bg-[#EEF3F1] transition-colors"
+              >
+                Close
+              </button>
+              <a
+                href={
+                  selectedRestaurant.google_maps_url ||
+                  `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                    selectedRestaurant.name +
+                      (selectedRestaurant.address ? `, ${selectedRestaurant.address}` : '')
+                  )}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-2.5 px-4 rounded-xl bg-[#16A36A] hover:bg-[#128254] text-white text-xs font-bold shadow-soft flex items-center justify-center space-x-2 transition-all"
+              >
+                <span>Open Restaurant in Google Maps</span>
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </div>
           </div>
         </div>
       )}

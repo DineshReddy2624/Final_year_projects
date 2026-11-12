@@ -158,3 +158,50 @@ def test_source_geocoding_unresolved_fails_cleanly():
 
     assert exc_info.value.status_code == 400
     assert "Could not locate starting location" in exc_info.value.detail
+
+
+def test_multi_day_origin_return_only_on_last_day_and_restaurant_links():
+    """Verify that multi-day road trips ONLY return to origin on the final day, and all dining stops contain Google Maps URLs and coordinates."""
+    payload = {
+        "destination": "Hyderabad, Telangana",
+        "source": "Rajampet, Y.S.R. Kadapa, Andhra Pradesh",
+        "round_trip": True,
+        "start_date": "2026-11-17",
+        "end_date": "2026-11-21",
+        "travelers_count": 2,
+        "budget": 50000.0,
+        "daily_available_hours": 8.0,
+        "transportation": "driving-car",
+        "include_accommodation": True,
+        "enable_stopover_recommendation": True,
+    }
+    res = client.post("/api/itinerary/generate", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["days"]) == 5
+
+    # Days 1 through 4 MUST NOT have an Origin Return stop!
+    for d_idx in range(4):
+        day = data["days"][d_idx]
+        return_stops = [s for s in day["stops"] if s.get("category") == "Origin Return" or ("Rajampet" in s.get("name", "") and s.get("is_end_location"))]
+        assert len(return_stops) == 0, f"Day {d_idx + 1} should NOT return to origin!"
+
+    # Day 5 (Final Day) MUST have the Origin Return stop back to Rajampet!
+    day5 = data["days"][4]
+    final_stop = day5["stops"][-1]
+    assert final_stop["is_end_location"] is True
+    assert "Rajampet" in final_stop["name"]
+
+    # Verify restaurant / dining stops have Google Maps details
+    all_meals = []
+    for day in data["days"]:
+        all_meals.extend(day.get("meal_breaks", []))
+    assert len(all_meals) >= 5
+    for meal in all_meals:
+        assert meal.get("name") is not None
+        assert meal.get("google_maps_url") is not None
+        assert "google.com/maps/search" in meal["google_maps_url"]
+        assert meal.get("latitude") is not None
+        assert meal.get("longitude") is not None
+        assert meal.get("cuisine") is not None
+

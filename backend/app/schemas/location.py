@@ -52,3 +52,4 @@ class RoutePreviewResponse(BaseModel):
     is_long_distance: bool = Field(description="True if route exceeds comfortable single-stretch driving threshold (>300km or >5hrs)")
     suggest_stopover: bool = Field(description="True if an intelligent hotel stopover is recommended")
     source: str = Field(default="live", description="'live', 'cached', or 'mocked'")
+

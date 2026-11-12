@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { MapPin, Utensils, Clock, DollarSign, Navigation, Calendar, Layers } from 'lucide-react';
+import { MapPin, Utensils, Clock, DollarSign, Navigation, Calendar, Layers, Car, Bike, Footprints, ExternalLink, RefreshCw, Compass } from 'lucide-react';
 import { formatCurrency, capitalizeWords } from '../utils/formatters';
+import locationService from '../services/locationService';
 
 // Map Auto-Fitter Helper Component
 function ChangeView({ bounds }) {
@@ -212,9 +213,15 @@ export default function MapComponent({
   height = '500px',
   selectedDay = null, // null means all days
   onDayChange = null,
+  initialVehicle = 'driving-car',
+  onVehicleChange = null,
+  showVehicleSelector = true,
 }) {
   const [activeDayFilter, setActiveDayFilter] = useState(selectedDay || 'all');
   const [activeTileKey, setActiveTileKey] = useState('osm');
+  const [selectedVehicle, setSelectedVehicle] = useState(initialVehicle || itinerary?.transportation || 'driving-car');
+  const [vehicleRouteMetrics, setVehicleRouteMetrics] = useState(null);
+  const [recalculatingRoute, setRecalculatingRoute] = useState(false);
   const activeTile = TILE_PROVIDERS[activeTileKey] || TILE_PROVIDERS.osm;
 
   useEffect(() => {
@@ -227,6 +234,58 @@ export default function MapComponent({
     setActiveDayFilter(val);
     if (onDayChange) {
       onDayChange(val);
+    }
+  };
+
+  // Live Road Route Recalculation on Vehicle Mode Switch
+  const handleVehicleSelect = async (vehicleMode) => {
+    setSelectedVehicle(vehicleMode);
+    if (onVehicleChange) onVehicleChange(vehicleMode);
+
+    // Identify Source & Destination coordinates from itinerary or stops
+    let sLat = null, sLon = null, dLat = null, dLon = null;
+    if (itinerary?.source_location?.latitude && itinerary?.source_location?.longitude) {
+      sLat = itinerary.source_location.latitude;
+      sLon = itinerary.source_location.longitude;
+    } else if (allStops.length > 0 && allStops[0].latitude) {
+      sLat = allStops[0].latitude;
+      sLon = allStops[0].longitude;
+    }
+
+    if (itinerary?.destination_accommodation?.latitude && itinerary?.destination_accommodation?.longitude) {
+      dLat = itinerary.destination_accommodation.latitude;
+      dLon = itinerary.destination_accommodation.longitude;
+    } else if (allStops.length > 1) {
+      // Find final destination or last stop
+      const lastStop = allStops[allStops.length - 1];
+      dLat = lastStop.latitude;
+      dLon = lastStop.longitude;
+    }
+
+    if (sLat && sLon && dLat && dLon) {
+      setRecalculatingRoute(true);
+      try {
+        const preview = await locationService.getRoutePreview({
+          sourceLat: sLat,
+          sourceLon: sLon,
+          destLat: dLat,
+          destLon: dLon,
+          profile: vehicleMode,
+        });
+        if (preview && preview.geometry) {
+          setVehicleRouteMetrics({
+            profile: vehicleMode,
+            distance_km: preview.distance_km,
+            duration_hours: preview.duration_hours,
+            duration_minutes: preview.duration_minutes,
+            geometry: preview.geometry,
+          });
+        }
+      } catch (err) {
+        console.warn('Vehicle route preview error:', err);
+      } finally {
+        setRecalculatingRoute(false);
+      }
     }
   };
 
@@ -346,43 +405,110 @@ export default function MapComponent({
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-[#DCE6E3] shadow-soft-md bg-white flex flex-col">
-      {/* Top Filter Controls (If Itinerary is present) */}
-      {itinerary?.days && itinerary.days.length > 1 && (
-        <div className="bg-white px-4 py-2.5 border-b border-[#DCE6E3] flex flex-wrap items-center justify-between gap-3 text-xs z-20">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[#52636A] font-medium flex items-center mr-1">
-              <Calendar className="w-3.5 h-3.5 mr-1 text-[#18B8A6]" />
-              Filter Day:
-            </span>
-            <button
-              onClick={() => handleDayFilterSelect('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-                activeDayFilter === 'all'
-                  ? 'bg-[#18B8A6] text-white shadow-soft'
-                  : 'bg-[#F4F7F6] text-[#52636A] hover:bg-[#EEF3F1] hover:text-[#163B46]'
-              }`}
-            >
-              All Days ({allStops.length} stops)
-            </button>
-            {itinerary.days.map((day, idx) => (
+      {/* Top Filter & Vehicle Controls */}
+      <div className="bg-white px-4 py-3 border-b border-[#DCE6E3] flex flex-wrap items-center justify-between gap-3 text-xs z-20">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Day Filter */}
+          {itinerary?.days && itinerary.days.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5 mr-2">
+              <span className="text-[#52636A] font-medium flex items-center mr-1">
+                <Calendar className="w-3.5 h-3.5 mr-1 text-[#18B8A6]" />
+                Day:
+              </span>
               <button
-                key={day.day_number}
-                onClick={() => handleDayFilterSelect(String(day.day_number))}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 ${
-                  activeDayFilter === String(day.day_number)
-                    ? 'bg-[#163B46] text-white shadow-soft'
+                type="button"
+                onClick={() => handleDayFilterSelect('all')}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  activeDayFilter === 'all'
+                    ? 'bg-[#18B8A6] text-white shadow-soft'
                     : 'bg-[#F4F7F6] text-[#52636A] hover:bg-[#EEF3F1] hover:text-[#163B46]'
                 }`}
               >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: DAY_COLORS[idx % DAY_COLORS.length] }}
-                />
-                <span>Day {day.day_number}</span>
+                All Days
               </button>
-            ))}
-          </div>
+              {itinerary.days.map((day, idx) => (
+                <button
+                  key={day.day_number}
+                  type="button"
+                  onClick={() => handleDayFilterSelect(String(day.day_number))}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 ${
+                    activeDayFilter === String(day.day_number)
+                      ? 'bg-[#163B46] text-white shadow-soft'
+                      : 'bg-[#F4F7F6] text-[#52636A] hover:bg-[#EEF3F1] hover:text-[#163B46]'
+                  }`}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: DAY_COLORS[idx % DAY_COLORS.length] }}
+                  />
+                  <span>Day {day.day_number}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
+          {/* Vehicle Selector (Car / Bike / Walk) */}
+          {showVehicleSelector && (
+            <div className="flex items-center space-x-1 bg-[#F4F7F6] p-1 rounded-xl border border-[#DCE6E3]">
+              <span className="text-[11px] font-bold text-[#52636A] px-2 flex items-center">
+                <Navigation className="w-3.5 h-3.5 mr-1 text-[#18B8A6]" />
+                Vehicle:
+              </span>
+              <button
+                type="button"
+                onClick={() => handleVehicleSelect('driving-car')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center space-x-1 transition-all ${
+                  selectedVehicle === 'driving-car'
+                    ? 'bg-[#18B8A6] text-white shadow-xs'
+                    : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#E5ECE9]'
+                }`}
+                title="Driving Car Road Route"
+              >
+                <span>🚗</span>
+                <span>Car</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleVehicleSelect('cycling-regular')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center space-x-1 transition-all ${
+                  selectedVehicle === 'cycling-regular'
+                    ? 'bg-[#18B8A6] text-white shadow-xs'
+                    : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#E5ECE9]'
+                }`}
+                title="Two-Wheeler / Bike Route"
+              >
+                <span>🏍️</span>
+                <span>Bike</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleVehicleSelect('foot-walking')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center space-x-1 transition-all ${
+                  selectedVehicle === 'foot-walking'
+                    ? 'bg-[#18B8A6] text-white shadow-xs'
+                    : 'text-[#52636A] hover:text-[#163B46] hover:bg-[#E5ECE9]'
+                }`}
+                title="Walking Route"
+              >
+                <span>🚶</span>
+                <span>Walk</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Live Route Metric Badge */}
+        {vehicleRouteMetrics ? (
+          <div className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold shadow-xs">
+            <span>{selectedVehicle === 'driving-car' ? '🚗 Car' : selectedVehicle === 'cycling-regular' ? '🏍️ Bike' : '🚶 Walk'} Best Route:</span>
+            <span className="text-emerald-700 font-extrabold">{vehicleRouteMetrics.distance_km} km</span>
+            <span>•</span>
+            <span className="text-[#163B46]">
+              ~{vehicleRouteMetrics.duration_hours >= 1 ? `${vehicleRouteMetrics.duration_hours} hrs` : `${vehicleRouteMetrics.duration_minutes} mins`}
+            </span>
+            {recalculatingRoute && <RefreshCw className="w-3 h-3 animate-spin text-emerald-600" />}
+          </div>
+        ) : (
           <div className="hidden sm:flex flex-wrap items-center gap-3 text-[11px] text-[#52636A] font-medium">
             <span className="flex items-center">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mr-1.5" /> 🚩 Source / Return
@@ -402,12 +528,9 @@ export default function MapComponent({
             <span className="flex items-center">
               <span className="w-2.5 h-2.5 rounded-full bg-[#16A36A] mr-1.5" /> Dining
             </span>
-            <span className="flex items-center">
-              <span className="w-4 h-0.5 bg-[#18B8A6] mr-1.5" /> Route Polyline
-            </span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Map Container */}
       <div style={{ height }} className="w-full relative z-10">
@@ -464,6 +587,21 @@ export default function MapComponent({
             url={activeTile.url}
             maxZoom={activeTile.maxZoom}
           />
+
+          {/* Active Vehicle-Recalculated Best Road Route */}
+          {vehicleRouteMetrics?.geometry && (
+            <Polyline
+              key={`polyline-vehicle-${vehicleRouteMetrics.profile}`}
+              positions={vehicleRouteMetrics.geometry}
+              pathOptions={{
+                color: '#0EA5E9',
+                weight: 6,
+                opacity: 0.9,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+            />
+          )}
 
           {/* Route Polylines */}
           {visiblePolylines.map((poly, idx) => (
@@ -608,28 +746,66 @@ export default function MapComponent({
           })}
 
           {/* Scheduled Meal Stops */}
-          {visibleMeals.map((meal, idx) => (
-            <Marker
-              key={`meal-${meal.id || idx}`}
-              position={[meal.latitude, meal.longitude]}
-              icon={createRestaurantIcon()}
-            >
-              <Popup>
-                <div className="space-y-1 text-[#26383D] min-w-[180px]">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#16A36A]">
-                    Day {meal.dayNumber} • Dining Break
-                  </span>
-                  <h4 className="text-xs font-bold text-[#163B46]">{meal.name}</h4>
-                  <p className="text-[11px] text-[#52636A]">
-                    {meal.scheduled_start} - {meal.scheduled_end} ({meal.duration_mins} mins)
-                  </p>
-                  <p className="text-[11px] text-[#16A36A] font-semibold">
-                    Budget Est: {formatCurrency(meal.estimated_cost || 0)}
-                  </p>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+          {visibleMeals.map((meal, idx) => {
+            const gmapsUrl =
+              meal.google_maps_url ||
+              `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                meal.name + (meal.address ? `, ${meal.address}` : '')
+              )}`;
+
+            return (
+              <Marker
+                key={`meal-${meal.id || idx}`}
+                position={[meal.latitude, meal.longitude]}
+                icon={createRestaurantIcon()}
+              >
+                <Popup>
+                  <div className="space-y-1.5 text-[#26383D] min-w-[210px] p-1">
+                    <div className="flex items-center justify-between border-b border-[#DCE6E3] pb-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#16A36A]">
+                        🍽️ Day {meal.dayNumber} • Dining Break
+                      </span>
+                      <span className="text-[10px] text-[#52636A] font-semibold capitalize">
+                        {meal.meal_type || 'Meal'}
+                      </span>
+                    </div>
+
+                    <h4 className="text-xs font-bold text-[#163B46]">{meal.name}</h4>
+
+                    {meal.cuisine && (
+                      <div className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        🍲 {meal.cuisine}
+                      </div>
+                    )}
+
+                    {meal.address && (
+                      <p className="text-[11px] text-[#52636A] line-clamp-2">{meal.address}</p>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-1 text-[11px] text-[#52636A] pt-1">
+                      <div>⏰ {meal.scheduled_start} - {meal.scheduled_end}</div>
+                      <div className="text-right text-[#16A36A] font-bold">
+                        {formatCurrency(meal.estimated_cost || (meal.estimated_cost_per_person || 350))}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 text-center border-t border-[#DCE6E3]">
+                      <a
+                        href={gmapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center space-x-1.5 w-full py-1.5 px-3 rounded-lg bg-[#16A36A] hover:bg-[#128254] text-white text-[11px] font-bold shadow-xs transition-colors"
+                        title="Open restaurant details only in Google Maps"
+                      >
+                        <span>Open in Google Maps</span>
+                        <ExternalLink className="w-3.5 h-3.5 ml-1" />
+                      </a>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
 
           {/* Standalone POIs (e.g. from Recommendations view) */}
           {standalonePlaces.map((poi, idx) => (

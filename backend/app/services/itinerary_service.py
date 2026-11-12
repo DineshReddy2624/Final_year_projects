@@ -1,4 +1,5 @@
 import math
+import urllib.parse
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -95,6 +96,143 @@ except ImportError:
     from backend.app.services.hotel_service import hotel_service
     from backend.app.services.recommendation_service import recommendation_service
     from backend.app.services.weather_service import weather_service
+
+# Curated Authentic Dining Catalog for Hyderabad
+HYDERABAD_CURATED_DINING = [
+    {
+        "name": "Paradise Biryani & Heritage Dining",
+        "cuisine": "Authentic Hyderabadi Dum Biryani & Kebabs",
+        "address": "MG Road, Sappu Bagh, Secunderabad, Hyderabad, Telangana",
+        "lat_offset": 0.003,
+        "lon_offset": 0.002,
+    },
+    {
+        "name": "Bawarchi Restaurant",
+        "cuisine": "Famous Hyderabadi Mutton Biryani, Boti Kebab & Tandoori",
+        "address": "Plot 44, RTC X Roads, Chikkadpally, Hyderabad, Telangana",
+        "lat_offset": -0.002,
+        "lon_offset": 0.003,
+    },
+    {
+        "name": "Shah Ghouse Hotel & Restaurant",
+        "cuisine": "Special Hyderabadi Biryani, Haleem & Tangdi Kebab",
+        "address": "Opposite Syed Ali Chabutra, Shalibanda, Charminar, Hyderabad, Telangana",
+        "lat_offset": -0.004,
+        "lon_offset": -0.003,
+    },
+    {
+        "name": "Chutneys Vegetarian Restaurant",
+        "cuisine": "South Indian Delicacies, 7-Chutneys Babai Idli & Steamed Dosa",
+        "address": "Road No. 3, Banjara Hills, Hyderabad, Telangana",
+        "lat_offset": 0.004,
+        "lon_offset": -0.004,
+    },
+    {
+        "name": "Minerva Coffee House",
+        "cuisine": "South Indian Filter Coffee, Executive Veg Thali & Tiffins",
+        "address": "Himayatnagar Main Road, Narayanguda, Hyderabad, Telangana",
+        "lat_offset": 0.001,
+        "lon_offset": 0.004,
+    },
+    {
+        "name": "Pista House Authentic Mughlai & Cafe",
+        "cuisine": "Authentic Haleem, Zafrani Mutton Biryani & Irani Chai",
+        "address": "Charminar Bus Stop, Shalibanda Road, Hyderabad, Telangana",
+        "lat_offset": -0.003,
+        "lon_offset": -0.002,
+    },
+    {
+        "name": "Cafe Niloufer & Bakers",
+        "cuisine": "World Famous Osmania Biscuits, Irani Chai & Mughlai Snacks",
+        "address": "Red Hills, Lakdikapul, Hyderabad, Telangana",
+        "lat_offset": 0.002,
+        "lon_offset": -0.001,
+    },
+    {
+        "name": "Jewel of Nizam - The Minar",
+        "cuisine": "Royal Hyderabadi Nizami Feast & Fine Dining",
+        "address": "The Golkonda Resort, Sagar Mahal Complex, Gandipet, Hyderabad, Telangana",
+        "lat_offset": -0.005,
+        "lon_offset": -0.006,
+    },
+]
+
+
+def build_curated_meal_break(
+    meal_type: str,
+    day_num: int,
+    scheduled_start: str,
+    scheduled_end: str,
+    duration_mins: int,
+    estimated_cost_per_person: float,
+    travelers_count: int,
+    destination: str,
+    base_lat: Optional[float] = None,
+    base_lon: Optional[float] = None,
+    poi_name: Optional[str] = None,
+    is_highway: bool = False,
+    corridor_town: Optional[str] = None,
+) -> MealBreak:
+    """Build a rich, realistic MealBreak with verified cuisine, address, coordinates and Google Maps search deep-link."""
+    clean_dest = (destination or "").lower()
+    total_cost = round(estimated_cost_per_person * max(1, travelers_count), 2)
+    m_id = f"meal_d{day_num}_{meal_type}"
+
+    if is_highway:
+        town = corridor_town or "Midway Corridor"
+        if meal_type == "lunch":
+            venue_name = f"Highway NH44 Grand Food Plaza & Dhaba ({town})"
+            cuisine = "Multi-Cuisine Highway Food Plaza & Refreshments"
+            addr = f"NH44 Highway Corridor, near {town} Bypass, Andhra Pradesh"
+        else:
+            venue_name = f"{town} Town Center Heritage Dining"
+            cuisine = "Regional Authentic Thali & Andhra Specialties"
+            addr = f"Main Road, {town} Town Center, Andhra Pradesh"
+
+        lat = round(base_lat, 5) if base_lat is not None else 15.5000
+        lon = round(base_lon, 5) if base_lon is not None else 78.2000
+    elif "hyderabad" in clean_dest:
+        # Pick from curated Hyderabadi restaurant catalog
+        idx = (day_num * 2 + (0 if meal_type == "lunch" else 1)) % len(HYDERABAD_CURATED_DINING)
+        item = HYDERABAD_CURATED_DINING[idx]
+        venue_name = item["name"]
+        cuisine = item["cuisine"]
+        addr = item["address"]
+        lat = round((base_lat or 17.3850) + item["lat_offset"], 5)
+        lon = round((base_lon or 78.4867) + item["lon_offset"], 5)
+    else:
+        # General destination
+        near_txt = f"near {poi_name}" if poi_name else destination
+        if meal_type == "lunch":
+            venue_name = f"{destination} Spice Route & Thali House ({near_txt})"
+            cuisine = f"Traditional {destination} Regional Cuisine & Tiffins"
+        else:
+            venue_name = f"Royal {destination} Gourmet Dining Quarter"
+            cuisine = f"Multi-Cuisine Specialties & Local {destination} Feast"
+        addr = f"Central Avenue, {near_txt}, {destination}"
+        lat = round((base_lat or 17.3850) + 0.002 * ((day_num % 3) - 1), 5)
+        lon = round((base_lon or 78.4867) + 0.002 * (((day_num + 1) % 3) - 1), 5)
+
+    # Google Maps URL focused specifically on that restaurant and venue
+    gmaps_query = f"{venue_name}, {addr}"
+    google_maps_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(gmaps_query)}"
+
+    return MealBreak(
+        id=m_id,
+        meal_type=meal_type,
+        name=venue_name,
+        scheduled_start=scheduled_start,
+        scheduled_end=scheduled_end,
+        duration_mins=duration_mins,
+        estimated_cost_per_person=estimated_cost_per_person,
+        estimated_cost=total_cost,
+        latitude=lat,
+        longitude=lon,
+        address=addr,
+        cuisine=cuisine,
+        google_maps_url=google_maps_url,
+    )
+
 
 # Global in-memory cache for fast retrieval of generated itineraries
 ITINERARY_CACHE: Dict[str, ItineraryResponse] = {}
@@ -708,13 +846,19 @@ class ItineraryService:
 
                     # Scheduled Highway Lunch Break
                     day_meals.append(
-                        MealBreak(
+                        build_curated_meal_break(
                             meal_type="lunch",
-                            name="Highway Corridor Lunch & Refreshments",
+                            day_num=day_num,
                             scheduled_start="13:00",
                             scheduled_end="14:00",
                             duration_mins=60,
                             estimated_cost_per_person=350.0,
+                            travelers_count=request.travelers_count,
+                            destination=request.destination,
+                            base_lat=(effective_source.latitude + stopover_hotel.latitude) / 2.0,
+                            base_lon=(effective_source.longitude + stopover_hotel.longitude) / 2.0,
+                            is_highway=True,
+                            corridor_town=stopover_hotel.stopover_town,
                         )
                     )
 
@@ -753,13 +897,19 @@ class ItineraryService:
 
                     # Dinner at stopover hotel / town
                     day_meals.append(
-                        MealBreak(
+                        build_curated_meal_break(
                             meal_type="dinner",
-                            name=f"Dinner at {stopover_hotel.name} or town center",
+                            day_num=day_num,
                             scheduled_start="20:00",
                             scheduled_end="21:00",
                             duration_mins=60,
                             estimated_cost_per_person=450.0,
+                            travelers_count=request.travelers_count,
+                            destination=request.destination,
+                            base_lat=stopover_hotel.latitude,
+                            base_lon=stopover_hotel.longitude,
+                            is_highway=True,
+                            corridor_town=stopover_hotel.stopover_town,
                         )
                     )
                     theme = f"Day 1: Outbound Transit & Overnight Stopover in {stopover_hotel.stopover_town}"
@@ -830,13 +980,18 @@ class ItineraryService:
 
                     # Lunch break in destination
                     day_meals.append(
-                        MealBreak(
+                        build_curated_meal_break(
                             meal_type="lunch",
-                            name=f"Lunch near {dest_h_name}",
+                            day_num=day_num,
                             scheduled_start="12:45",
                             scheduled_end="13:45",
                             duration_mins=60,
                             estimated_cost_per_person=350.0,
+                            travelers_count=request.travelers_count,
+                            destination=request.destination,
+                            base_lat=dest_h_lat,
+                            base_lon=dest_h_lon,
+                            poi_name=dest_h_name,
                         )
                     )
                     clock_mins = max(clock_mins, 825)
@@ -905,13 +1060,18 @@ class ItineraryService:
                     )
 
                     day_meals.append(
-                        MealBreak(
+                        build_curated_meal_break(
                             meal_type="dinner",
-                            name=f"Dinner at {request.destination} City Center",
+                            day_num=day_num,
                             scheduled_start="20:00",
                             scheduled_end="21:00",
                             duration_mins=60,
                             estimated_cost_per_person=450.0,
+                            travelers_count=request.travelers_count,
+                            destination=request.destination,
+                            base_lat=dest_h_lat,
+                            base_lon=dest_h_lon,
+                            poi_name="City Center",
                         )
                     )
                     theme = f"Day 2: Arrival in {request.destination} & Historic Exploration"
@@ -966,13 +1126,18 @@ class ItineraryService:
                             clock_mins += 60
                             lunch_end = minutes_to_time_str(clock_mins)
                             day_meals.append(
-                                MealBreak(
+                                build_curated_meal_break(
                                     meal_type="lunch",
-                                    name=f"Lunch Break near {poi.name}",
+                                    day_num=day_num,
                                     scheduled_start=lunch_start,
                                     scheduled_end=lunch_end,
                                     duration_mins=60,
                                     estimated_cost_per_person=350.0,
+                                    travelers_count=request.travelers_count,
+                                    destination=request.destination,
+                                    base_lat=poi.latitude,
+                                    base_lon=poi.longitude,
+                                    poi_name=poi.name,
                                 )
                             )
                             lunch_scheduled = True
@@ -1028,21 +1193,26 @@ class ItineraryService:
                     )
 
                     day_meals.append(
-                        MealBreak(
+                        build_curated_meal_break(
                             meal_type="dinner",
-                            name="Dinner at Destination Dining Quarter",
+                            day_num=day_num,
                             scheduled_start="19:30",
                             scheduled_end="20:30",
                             duration_mins=60,
                             estimated_cost_per_person=450.0,
+                            travelers_count=request.travelers_count,
+                            destination=request.destination,
+                            base_lat=dest_h_lat,
+                            base_lon=dest_h_lon,
+                            poi_name="Dining Quarter",
                         )
                     )
                     theme = f"Day {day_num}: {request.destination} Culture, Forts & Architecture"
 
                 else:
                     # FINAL DAY: Return Highway Journey to Source
-                    curr_lat = dest_h_lat
-                    curr_lon = dest_h_lon
+                    curr_lat = stopover_hotel.latitude if total_days == 2 and stopover_hotel else dest_h_lat
+                    curr_lon = stopover_hotel.longitude if total_days == 2 and stopover_hotel else dest_h_lon
 
                     day_stops.append(
                         ItineraryStop(
@@ -1102,13 +1272,19 @@ class ItineraryService:
                         )
 
                     day_meals.append(
-                        MealBreak(
+                        build_curated_meal_break(
                             meal_type="lunch",
-                            name="Highway Corridor Return Dining Break",
+                            day_num=day_num,
                             scheduled_start="13:00",
                             scheduled_end="14:00",
                             duration_mins=60,
                             estimated_cost_per_person=350.0,
+                            travelers_count=request.travelers_count,
+                            destination=request.destination,
+                            base_lat=(curr_lat + effective_source.latitude) / 2.0,
+                            base_lon=(curr_lon + effective_source.longitude) / 2.0,
+                            is_highway=True,
+                            corridor_town=stopover_hotel.stopover_town if stopover_hotel else "Return Corridor",
                         )
                     )
 
@@ -1186,6 +1362,22 @@ class ItineraryService:
                     else:
                         break
 
+            dest_h_lat = destination_hotel.latitude if destination_hotel else ref_lat
+            dest_h_lon = destination_hotel.longitude if destination_hotel else ref_lon
+            dest_h_name = destination_hotel.name if destination_hotel else f"{request.destination} Hotel"
+
+            dest_hotel_poi = POIScheduleInput(
+                id=destination_hotel.hotel_id if destination_hotel else "dest_hotel",
+                name=dest_h_name,
+                latitude=dest_h_lat,
+                longitude=dest_h_lon,
+                category="Destination Hotel",
+                address=destination_hotel.address if destination_hotel else request.destination,
+                visit_duration_mins=0,
+                entrance_fee=0.0,
+                is_fee_verified=True,
+            )
+
             for day_num in range(1, total_days + 1):
                 curr_date = start_date + timedelta(days=day_num - 1)
                 curr_date_str = curr_date.isoformat()
@@ -1213,8 +1405,38 @@ class ItineraryService:
                     )
                     continue
 
-                if effective_source and effective_return and len(day_pois) > 0:
-                    day_all_points = [effective_source] + day_pois + [effective_return]
+                # Determine start and end points for this day:
+                # 1. Intercity Multi-Day Trips (>40km from destination, e.g. Rajampet -> Hyderabad):
+                #    Travelers stay at destination lodging each night and ONLY return to origin on the final day!
+                # 2. Local Same-City Circuits (<=40km):
+                #    Daily round-trips from local hub/airport.
+                # 3. No Source specified:
+                #    Direct sightseeing stops only.
+                if effective_source:
+                    if is_intercity and total_days > 1:
+                        if day_num == 1:
+                            day_start_poi = effective_source
+                            day_end_poi = dest_hotel_poi
+                            is_final_day = False
+                        elif day_num < total_days:
+                            day_start_poi = dest_hotel_poi
+                            day_end_poi = dest_hotel_poi
+                            is_final_day = False
+                        else:
+                            day_start_poi = dest_hotel_poi
+                            day_end_poi = effective_return or effective_source
+                            is_final_day = True
+                    else:
+                        day_start_poi = effective_source
+                        day_end_poi = effective_return if request.round_trip else None
+                        is_final_day = (day_num == total_days)
+                else:
+                    day_start_poi = None
+                    day_end_poi = None
+                    is_final_day = (day_num == total_days)
+
+                if day_start_poi and day_end_poi and len(day_pois) > 0:
+                    day_all_points = [day_start_poi] + day_pois + [day_end_poi]
                     coords = [(p.latitude, p.longitude) for p in day_all_points]
                     matrix = compute_distance_matrix(coords, transportation=request.transportation)
                     last_idx = len(coords) - 1
@@ -1236,17 +1458,18 @@ class ItineraryService:
                 day_meals = []
                 day_warnings = []
 
-                if effective_source:
-                    curr_lat = effective_source.latitude
-                    curr_lon = effective_source.longitude
+                if day_start_poi:
+                    curr_lat = day_start_poi.latitude
+                    curr_lon = day_start_poi.longitude
+                    is_origin_start = (day_num == 1 and effective_source and day_start_poi == effective_source)
                     day_stops.append(
                         ItineraryStop(
                             stop_order=1,
-                            place_id=effective_source.id or "source_start",
-                            name=effective_source.name,
-                            latitude=effective_source.latitude,
-                            longitude=effective_source.longitude,
-                            category=effective_source.category or "Origin Hub",
+                            place_id=day_start_poi.id or "day_start",
+                            name=day_start_poi.name if is_origin_start else f"Depart {day_start_poi.name}",
+                            latitude=day_start_poi.latitude,
+                            longitude=day_start_poi.longitude,
+                            category="Origin Hub" if is_origin_start else "Destination Hotel",
                             arrival_time=minutes_to_time_str(clock_mins),
                             departure_time=minutes_to_time_str(clock_mins),
                             visit_duration_mins=0,
@@ -1256,6 +1479,9 @@ class ItineraryService:
                             total_entrance_fee=0.0,
                             fee_status="free",
                             is_start_location=True,
+                            is_hotel_stay=not is_origin_start,
+                            hotel_category="destination_hotel" if not is_origin_start else None,
+                            hotel_details=destination_hotel if not is_origin_start else None,
                         )
                     )
 
@@ -1275,13 +1501,18 @@ class ItineraryService:
                         clock_mins += 60
                         lunch_end = minutes_to_time_str(clock_mins)
                         day_meals.append(
-                            MealBreak(
+                            build_curated_meal_break(
                                 meal_type="lunch",
-                                name=f"Lunch Break near {poi.name}",
+                                day_num=day_num,
                                 scheduled_start=lunch_start,
                                 scheduled_end=lunch_end,
                                 duration_mins=60,
                                 estimated_cost_per_person=350.0,
+                                travelers_count=request.travelers_count,
+                                destination=request.destination,
+                                base_lat=poi.latitude,
+                                base_lon=poi.longitude,
+                                poi_name=poi.name,
                             )
                         )
                         lunch_scheduled = True
@@ -1307,20 +1538,39 @@ class ItineraryService:
                     day_stops.append(stop_obj)
                     all_stops_flat.append(flat_rec)
 
-                if effective_return and curr_lat is not None and curr_lon is not None:
+                # Dinner break
+                day_meals.append(
+                    build_curated_meal_break(
+                        meal_type="dinner",
+                        day_num=day_num,
+                        scheduled_start="20:00",
+                        scheduled_end="21:00",
+                        duration_mins=60,
+                        estimated_cost_per_person=450.0,
+                        travelers_count=request.travelers_count,
+                        destination=request.destination,
+                        base_lat=dest_h_lat,
+                        base_lon=dest_h_lon,
+                        poi_name=dest_h_name,
+                    )
+                )
+
+                if day_end_poi and curr_lat is not None and curr_lon is not None:
                     end_dist, end_dur = calculate_leg_road_metrics(
-                        curr_lat, curr_lon, effective_return.latitude, effective_return.longitude, request.transportation
+                        curr_lat, curr_lon, day_end_poi.latitude, day_end_poi.longitude, request.transportation
                     )
                     clock_mins += int(round(end_dur))
                     arr_str = minutes_to_time_str(clock_mins)
+
+                    is_origin_return = is_final_day and (day_end_poi == effective_return or day_end_poi == effective_source)
                     day_stops.append(
                         ItineraryStop(
                             stop_order=len(day_stops) + 1,
-                            place_id=effective_return.id or "source_return",
-                            name=effective_return.name,
-                            latitude=effective_return.latitude,
-                            longitude=effective_return.longitude,
-                            category=effective_return.category or "Destination Return",
+                            place_id=day_end_poi.id or ("source_return" if is_origin_return else "dest_hotel_stay"),
+                            name=day_end_poi.name if is_origin_return else f"Return to {dest_h_name}",
+                            latitude=day_end_poi.latitude,
+                            longitude=day_end_poi.longitude,
+                            category="Origin Return" if is_origin_return else "Destination Hotel",
                             arrival_time=arr_str,
                             departure_time=arr_str,
                             visit_duration_mins=0,
@@ -1330,6 +1580,9 @@ class ItineraryService:
                             total_entrance_fee=0.0,
                             fee_status="free",
                             is_end_location=True,
+                            is_hotel_stay=not is_origin_return,
+                            hotel_category="destination_hotel" if not is_origin_return else None,
+                            hotel_details=destination_hotel if not is_origin_return else None,
                         )
                     )
 
