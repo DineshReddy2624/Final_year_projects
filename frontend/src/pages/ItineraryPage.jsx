@@ -36,6 +36,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import AttractionImage from '../components/AttractionImage';
 import MapComponent from '../components/MapComponent';
+import RouteAssistanceCard from '../components/RouteAssistanceCard';
 import {
   formatCurrency,
   formatDurationMins,
@@ -824,6 +825,13 @@ export default function ItineraryPage() {
           />
         )}
       </div>
+
+      {/* --- Vehicle-Based Route Assistance: Source to All Destinations --- */}
+      <RouteAssistanceCard
+        itinerary={itin}
+        initialVehicle={activeVehicleMode}
+        onVehicleChange={setActiveVehicleMode}
+      />
 
       {/* --- Day Selector Tabs --- */}
       {itin.days && itin.days.length > 1 && (

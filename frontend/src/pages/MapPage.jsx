@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useTrip } from '../context/TripContext';
 import MapComponent from '../components/MapComponent';
+import RouteAssistanceCard from '../components/RouteAssistanceCard';
 import { formatCurrency, formatDistanceKm, getCategoryBadgeColor, capitalizeWords } from '../utils/formatters';
 
 export default function MapPage() {
@@ -21,6 +22,7 @@ export default function MapPage() {
   const { currentItinerary, recommendations, tripPlan } = useTrip();
 
   const [activeDayFilter, setActiveDayFilter] = useState('all');
+  const [activeVehicleMode, setActiveVehicleMode] = useState(tripPlan?.transportation || 'driving-car');
 
   const destinationName = currentItinerary?.destination || tripPlan.destination || 'Hyderabad';
 
@@ -88,6 +90,9 @@ export default function MapPage() {
             height="620px"
             selectedDay={activeDayFilter}
             onDayChange={setActiveDayFilter}
+            initialVehicle={activeVehicleMode}
+            onVehicleChange={setActiveVehicleMode}
+            showVehicleSelector={true}
           />
 
           {/* Quick Map Legend */}
@@ -282,6 +287,13 @@ export default function MapPage() {
           </div>
         </div>
       </div>
+
+      {/* Route Assistance: Source to All Destinations */}
+      <RouteAssistanceCard
+        itinerary={currentItinerary}
+        initialVehicle={activeVehicleMode}
+        onVehicleChange={setActiveVehicleMode}
+      />
     </div>
   );
 }

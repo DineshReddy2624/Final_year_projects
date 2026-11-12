@@ -56,6 +56,24 @@ export const locationService = {
 
     return response.data;
   },
+
+  /**
+   * Fetch comprehensive vehicle-specific route assistance from Source to all Destinations
+   * @param {Object} params
+   * @param {Object} params.source
+   * @param {Array<Object>} params.destinations
+   * @param {string} [params.profile] 'driving-car' | 'cycling-regular' | 'foot-walking'
+   * @returns {Promise<Object>} RouteAssistanceResponse
+   */
+  async getRouteAssistance({ source, destinations, profile = 'driving-car' }) {
+    const response = await apiClient.post('/locations/route-assistance', {
+      source,
+      destinations,
+      profile,
+    });
+
+    return response.data;
+  },
 };
 
 export default locationService;
